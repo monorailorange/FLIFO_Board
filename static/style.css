@@ -102,7 +102,7 @@ table.flifo-table thead th {
 }
 
 table.flifo-table tbody td {
-  padding: 1rem;
+  padding: 1.15rem 1.1rem;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -126,13 +126,13 @@ table.flifo-table tbody td {
 }
 
 .col-flight {
-  font-size: 1.1rem;
+  font-size: 1.7rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .col-code {
-  font-size: 1.6rem;
+  font-size: 2.1rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -140,19 +140,19 @@ table.flifo-table tbody td {
 .col-time { white-space: nowrap; }
 
 .cell-time {
-  font-size: 1.05rem;
+  font-size: 1.7rem;
   font-variant-numeric: tabular-nums;
 }
 
 .cell-date {
-  font-size: 0.7rem;
+  font-size: 1.05rem;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .col-gate {
-  font-size: 0.8rem;
+  font-size: 1.3rem;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -160,7 +160,7 @@ table.flifo-table tbody td {
 }
 
 .block-cell {
-  font-size: 1.4rem;
+  font-size: 1.8rem;
   font-weight: 700;
   letter-spacing: 0.03em;
 }
@@ -171,13 +171,13 @@ table.flifo-table tbody td {
 
 .status-badge {
   display: inline-block;
-  padding: 0.3rem 0.9rem;
+  padding: 0.5rem 1.25rem;
   border-radius: 999px;
-  font-size: 0.85rem;
-  letter-spacing: 0.1em;
+  font-size: 1.3rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 600;
-  border: 1px solid currentColor;
+  border: 2px solid currentColor;
   white-space: nowrap;
 }
 

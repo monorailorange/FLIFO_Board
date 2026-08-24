@@ -26,7 +26,15 @@ board slot (current/next) it happens to occupy -- see _cadence_for():
       just to keep estimated_out/estimated_in fresh -- this is the only
       case where board slot actually matters.
   2. actual_out known, actual_off not yet: every 1 minute until actual_off.
-  3. actual_off known, actual_on not yet: every 5 minutes until actual_on.
+  3. actual_off known, actual_on not yet: every 5 minutes until actual_on --
+     except once within 15 minutes of the delay-adjusted estimated arrival
+     (or scheduled, if no delay is known yet), which switches to every 1
+     minute -- same pre-window idea as rule 1, applied to touchdown instead
+     of departure. Without this, actual_on landing anywhere in the middle
+     of that 5-minute gap between polls -- which is most of the time --
+     would sit undetected for however much of it was left, up to the full
+     5 minutes; this bounds that lag to about 1 minute instead, right when
+     it's most noticeable on the board.
   4. actual_on known, actual_in not yet: every 1 minute until actual_in.
   5. actual_in known: fully resolved, stop polling this record.
 
@@ -69,6 +77,7 @@ _CURRENT_FAST_SECONDS = 60          # phases 1, 2, 4
 _CURRENT_SLOW_SECONDS = 5 * 60      # phase 3 (airborne)
 _NEXT_FLIGHT_SECONDS = 15 * 60
 _PRE_DEPARTURE_WINDOW = timedelta(minutes=15)
+_PRE_ARRIVAL_WINDOW = timedelta(minutes=15)
 
 
 def _persist_to_env(var_name: str, value: str) -> None:
@@ -164,7 +173,18 @@ def _cadence_for(flight: FlightEvent, is_current_slot: bool, now: datetime) -> O
     if flight.actual_on:
         return _CURRENT_FAST_SECONDS   # phase 4
     if flight.actual_off:
-        return _CURRENT_SLOW_SECONDS   # phase 3
+        # phase 3 (airborne): slow cadence for most of the flight -- no
+        # point polling every minute while there are hours left in the
+        # air -- but switch to the fast cadence once touchdown is close,
+        # same pre-window pattern as phase 1's departure gating below.
+        # Without this, actual_on could sit undetected for up to a full
+        # _CURRENT_SLOW_SECONDS after it actually happens, since that's
+        # deliberately a long interval; this bounds that lag to roughly
+        # _CURRENT_FAST_SECONDS instead, right when it matters most.
+        trigger = flight.estimated_in or flight.arr_dt_utc
+        if now >= trigger - _PRE_ARRIVAL_WINDOW:
+            return _CURRENT_FAST_SECONDS
+        return _CURRENT_SLOW_SECONDS
     if flight.actual_out:
         return _CURRENT_FAST_SECONDS   # phase 2: already departed, regardless of slot
 

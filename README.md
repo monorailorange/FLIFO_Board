@@ -330,7 +330,14 @@ is keyed off **each flight's own OOOI progress — not which board slot
   just to keep `estimated_out`/`estimated_in` fresh. This is the only case
   where board slot actually changes the cadence.
 - `actual_out` known, `actual_off` not yet: every **1 minute**.
-- `actual_off` known, `actual_on` not yet (airborne): every **5 minutes**.
+- `actual_off` known, `actual_on` not yet (airborne): every **5 minutes** —
+  except once within 15 minutes of the delay-adjusted estimated arrival (or
+  scheduled, if no delay is known yet), which switches to every **1
+  minute**, same pre-window idea as the pre-departure case above but for
+  touchdown. Without this, `actual_on` landing anywhere in the middle of
+  that 5-minute gap between polls (which is most of the time) would sit
+  undetected for up to the full 5 minutes before the board's pill updates
+  — this bounds that lag to about a minute instead.
 - `actual_on` known, `actual_in` not yet: every **1 minute**.
 - `actual_in` known: fully resolved, polling stops for that record — and
   the board's 15-minute "still current" grace countdown

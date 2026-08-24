@@ -141,6 +141,7 @@ table.flifo-table tbody td {
 
 .cell-time {
   font-size: 1.7rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 

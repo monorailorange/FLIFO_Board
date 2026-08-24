@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calendar / Debug View</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="debug-wrap">
+    <p><a href="{{ url_for('board') }}">&larr; back to board</a></p>
+
+    <div class="mode-toggle">
+      <span class="mode-toggle-label">Data source:</span>
+      <form method="post" action="{{ url_for('set_calendar_mode') }}">
+        <input type="hidden" name="mode" value="real">
+        <button type="submit" class="{{ 'active' if mode == 'real' else '' }}">Real World Data</button>
+      </form>
+      <form method="post" action="{{ url_for('set_calendar_mode') }}">
+        <input type="hidden" name="mode" value="simulated">
+        <button type="submit" class="{{ 'active' if mode == 'simulated' else '' }}">Simulated Data</button>
+      </form>
+    </div>
+
+    {% if mode == 'simulated' %}
+    <p class="sim-banner">
+      &#9888; Simulated mode is on. The board (and its API) are currently serving generated
+      sample events below, not your real calendar -- this never reads or writes your real
+      stored data. Switch back to "Real World Data" above when you're done previewing.
+    </p>
+    {% endif %}
+
+    {% if added %}
+    <p class="flash flash-ok">{{ added }}</p>
+    {% endif %}
+    {% if deleted %}
+    <p class="flash flash-ok">Record deleted.</p>
+    {% endif %}
+    {% if polled %}
+    <p class="flash flash-ok">Polled AeroAPI: {{ polled }}</p>
+    {% endif %}
+    {% if error %}
+    <p class="flash flash-error">{{ error }}</p>
+    {% endif %}
+
+    <h2>Flight Info Source</h2>
+    <p class="manual-entry-note">
+      "Local Timing" derives status purely from the published schedule (the app's original
+      behavior). "AeroAPI" polls <a href="https://www.flightaware.com/commercial/aeroapi/" target="_blank" rel="noopener">FlightAware AeroAPI</a>
+      for the current and next flight on a dynamic schedule -- every 1 minute through
+      gate-out/wheels-up/wheels-down/gate-in transitions, every 5 minutes while airborne, and
+      every 15 minutes for the next flight's estimates -- and shows actual/estimated times and
+      a live status once available, falling back to the published time until AeroAPI reports
+      something newer. This only ever applies to Real World Data; Simulated Data always shows
+      locally-derived timing.
+    </p>
+    <div class="mode-toggle">
+      <span class="mode-toggle-label">Flight info source:</span>
+      <form method="post" action="{{ url_for('set_status_source') }}">
+        <input type="hidden" name="source" value="LOCAL">
+        <button type="submit" class="{{ 'active' if status_source == 'LOCAL' else '' }}">Local Timing</button>
+      </form>
+      <form method="post" action="{{ url_for('set_status_source') }}">
+        <input type="hidden" name="source" value="AEROAPI">
+        <button type="submit" class="{{ 'active' if status_source == 'AEROAPI' else '' }}">AeroAPI</button>
+      </form>
+    </div>
+
+    <div class="manual-entry-forms">
+      <form method="post" action="{{ url_for('set_aeroapi_key') }}" class="manual-form">
+        <div class="manual-form-title">AeroAPI Key</div>
+        <label>
+          {% if aeroapi_key_masked %}Saved key: {{ aeroapi_key_masked }} -- paste below to replace{% else %}No key saved{% endif %}
+          <input type="password" name="api_key" placeholder="paste your AeroAPI key" autocomplete="off">
+        </label>
+        <button type="submit">Save Key</button>
+      </form>
+      <form method="post" action="{{ url_for('set_aeroapi_key') }}" class="manual-form">
+        <div class="manual-form-title">Clear Saved Key</div>
+        <p class="manual-entry-note" style="margin:0;">Removes the saved key. AeroAPI mode won't be able to poll until a new one is saved.</p>
+        <input type="hidden" name="action" value="clear">
+        <button type="submit">Clear Key</button>
+      </form>
+      <form method="post" action="{{ url_for('aeroapi_poll_now') }}" class="manual-form">
+        <div class="manual-form-title">Poll Now</div>
+        <p class="manual-entry-note" style="margin:0;">Trigger an AeroAPI poll immediately instead of waiting for the next scheduled tick (only fires if a query is actually due under the phase-based cadence).</p>
+        <button type="submit">Poll AeroAPI Now</button>
+      </form>
+    </div>
+
+    <h2>Manually Add a Record</h2>
+    <p class="manual-entry-note">
+      Adds and deletes here always apply to your real stored data, regardless of the
+      "Data source" toggle above. Manually-added records show up on the board like any
+      other, and can be deleted again from the table below -- records that came in
+      through the ICS feed can't be.
+    </p>
+    <div class="manual-entry-forms">
+      <form method="post" action="{{ url_for('add_flight_record') }}" class="manual-form">
+        <div class="manual-form-title">Add Flight (Manual Title)</div>
+        <label>Title
+          <input type="text" name="title" placeholder="UA123 SFO 19Aug 0830 - ORD 19Aug 1420" required>
+        </label>
+        <label>Dep Gate <input type="text" name="dep_gate" placeholder="optional"></label>
+        <label>Arr Gate <input type="text" name="arr_gate" placeholder="optional"></label>
+        <button type="submit">Add Flight</button>
+        {% if status_source != 'AEROAPI' %}
+        <p class="manual-entry-note" style="margin:0;">Switch Flight Info Source to AeroAPI above to add a flight by number + date instead.</p>
+        {% endif %}
+      </form>
+
+      {% if status_source == 'AEROAPI' %}
+      <form method="post" action="{{ url_for('add_flight_record_aeroapi') }}" class="manual-form">
+        <div class="manual-form-title">Add Flight (via AeroAPI)</div>
+        <label>Flight Number <input type="text" name="ident" placeholder="UA2044 or UAL2044" required></label>
+        <label>Departure Station <input type="text" name="dep_station" placeholder="SFO" required></label>
+        <label>Departure Date <input type="date" name="dep_date" required></label>
+        <label>Dep Gate <input type="text" name="dep_gate" placeholder="optional, overrides AeroAPI's if any"></label>
+        <label>Arr Gate <input type="text" name="arr_gate" placeholder="optional, overrides AeroAPI's if any"></label>
+        <button type="submit">Look Up &amp; Add</button>
+        <p class="manual-entry-note" style="margin:0;">
+          The departure station disambiguates flight numbers that fly more than once the
+          same day. AeroAPI fills in the route, scheduled times, and any live status/OOOI
+          data it already has.
+        </p>
+      </form>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('add_block_record') }}" class="manual-form">
+        <div class="manual-form-title">Add Day Off / Block</div>
+        <label>Code <input type="text" name="code" placeholder="OFF" required></label>
+        <label>Start Date <input type="date" name="start_date" required></label>
+        <label>End Date <input type="date" name="end_date" required></label>
+        <button type="submit">Add Block</button>
+      </form>
+    </div>
+
+    <h2>Refresh Log</h2>
+    <table class="debug-table">
+      <thead>
+        <tr><th>Fetched At (UTC)</th><th>Success</th><th>Event Count</th><th>Error</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in log %}
+        <tr class="{{ 'row-ok' if entry.success else 'row-error' }}">
+          <td>{{ entry.fetched_at }}</td>
+          <td>{{ 'yes' if entry.success else 'no' }}</td>
+          <td>{{ entry.event_count if entry.event_count is not none else '-' }}</td>
+          <td>{{ entry.error or '' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4">No refresh attempts yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Parsed Calendar Events ({{ events|length }})</h2>
+    <table class="debug-table">
+      <thead>
+        <tr>
+          <th>OK</th>
+          <th>Type</th>
+          <th>Flight # / Code</th>
+          <th>Dep</th>
+          <th>Dep Local</th>
+          <th>Dep Gate</th>
+          <th>Arr</th>
+          <th>Arr Local</th>
+          <th>Arr Gate</th>
+          <th>Raw Summary</th>
+          <th>UID</th>
+          <th>ICS DTSTART</th>
+          <th>ICS DTEND</th>
+          <th>Fetched At</th>
+          <th>Parse Error</th>
+          <th>Source</th>
+          <th>Actual Out</th>
+          <th>Actual Off</th>
+          <th>Actual On</th>
+          <th>Actual In</th>
+          <th>Est Out</th>
+          <th>Est In</th>
+          <th>Dep Delay</th>
+          <th>Arr Delay</th>
+          <th>AeroAPI Status</th>
+          <th>AeroAPI Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        <tr class="{{ 'row-ok' if e.parse_ok else 'row-error' }}">
+          <td>{{ '✓' if e.parse_ok else '✗' }}</td>
+          <td>{{ e.event_type }}</td>
+          <td>{{ e.flight_number or e.block_code or '' }}</td>
+          <td>{{ e.dep_code }}</td>
+          <td>{{ e.dep_dt_local or '' }}</td>
+          <td>{{ e.dep_gate or 'No Gate' }}</td>
+          <td>{{ e.arr_code }}</td>
+          <td>{{ e.arr_dt_local or '' }}</td>
+          <td>{{ e.arr_gate or 'No Gate' }}</td>
+          <td>{{ e.raw_summary }}</td>
+          <td>{{ e.uid }}</td>
+          <td>{{ e.ics_dtstart or '' }}</td>
+          <td>{{ e.ics_dtend or '' }}</td>
+          <td>{{ e.fetched_at }}</td>
+          <td>{{ e.parse_error or '' }}</td>
+          <td>{{ e.source or 'ICS' }}</td>
+          <td>{{ e.actual_out or '' }}</td>
+          <td>{{ e.actual_off or '' }}</td>
+          <td>{{ e.actual_on or '' }}</td>
+          <td>{{ e.actual_in or '' }}</td>
+          <td>{{ e.estimated_out or '' }}</td>
+          <td>{{ e.estimated_in or '' }}</td>
+          <td>{{ e.departure_delay_sec if e.departure_delay_sec is not none else '' }}</td>
+          <td>{{ e.arrival_delay_sec if e.arrival_delay_sec is not none else '' }}</td>
+          <td>{{ e.aeroapi_status or '' }}</td>
+          <td>{{ e.aeroapi_updated_at or '' }}</td>
+          <td>
+            {% if status_source == 'AEROAPI' and e.event_type == 'FLIGHT' and e.parse_ok %}
+            <form method="post" action="{{ url_for('aeroapi_poll_record') }}" style="display:inline;">
+              <input type="hidden" name="occurrence_key" value="{{ e.occurrence_key }}">
+              <button type="submit" class="delete-btn poll-btn" title="Poll AeroAPI for this specific record right now, regardless of current/next scope or cadence">Poll</button>
+            </form>
+            {% endif %}
+            {% if e.source == 'MANUAL' %}
+            <form method="post" action="{{ url_for('delete_record') }}"
+                  onsubmit="return confirm('Delete this manually-added record?');" style="display:inline;">
+              <input type="hidden" name="occurrence_key" value="{{ e.occurrence_key }}">
+              <button type="submit" class="delete-btn">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="27">No events ingested yet. Check ICS_URL / credentials in .env, then POST /api/refresh.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

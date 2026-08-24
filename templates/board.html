@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ board_title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div id="sim-banner" class="sim-banner" style="display:none;">
+    &#9888; SIMULATED DATA -- for preview only, not your real schedule.
+    <a href="{{ url_for('calendar_view') }}">switch back</a>
+  </div>
+  <header class="board-header">
+    <div class="title-row">
+      <h1>{{ board_title }}</h1>
+      <img id="heartbeat" class="heartbeat" src="{{ url_for('static', filename='header.gif') }}"
+           alt="Live" title="Live -- calendar refreshing normally">
+    </div>
+    <div id="clock">--:--:--</div>
+  </header>
+
+  <main class="board">
+    <table class="flifo-table">
+      <thead>
+        <tr>
+          <th class="col-airline">Airline</th>
+          <th class="col-flight">Flight</th>
+          <th class="col-code">From</th>
+          <th class="col-time">Departs</th>
+          <th class="col-gate">Gate</th>
+          <th class="col-code">To</th>
+          <th class="col-time">Arrives</th>
+          <th class="col-gate">Gate</th>
+          <th class="col-status">Status</th>
+        </tr>
+      </thead>
+      <tbody id="flifo-rows">
+        <!-- rendered by renderTable() -->
+      </tbody>
+    </table>
+  </main>
+
+  <nav class="board-nav">
+    <button type="button" id="nav-back" class="nav-btn" title="Previous flight record" aria-label="Previous flight record">&#8592;</button>
+    <button type="button" id="nav-current" class="nav-btn nav-btn-current is-live" title="Return to the current flight">Current Flight</button>
+    <button type="button" id="nav-forward" class="nav-btn" title="Next flight record" aria-label="Next flight record">&#8594;</button>
+  </nav>
+
+  <footer class="board-footer">
+    <span id="last-updated">Last updated: --</span>
+    <a href="{{ url_for('calendar_view') }}">calendar / debug view</a>
+  </footer>
+
+  <script>
+    const REFRESH_MS = 30 * 1000; // client poll of /api/status + /api/timeline
+    const ROWS = 5; // how many flight records the board shows at once
+    const UA_LOGO_URL = "{{ url_for('static', filename='ua_white.png') }}";
+    // The heartbeat gif goes stale if the calendar hasn't refreshed
+    // successfully within 2x the server's own refresh interval -- generous
+    // enough to not flicker on a single slow cycle, tight enough to catch a
+    // genuinely stuck ingest.
+    const STALE_AFTER_MS = {{ refresh_interval_minutes }} * 60 * 1000 * 2;
+
+    function fmtTime(iso) {
+      if (!iso) return "--:--";
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      return d.toLocaleDateString([], { day: "2-digit", month: "short" });
+    }
+
+    function renderRow(flight, isCurrent) {
+      const rowClass = "flifo-row" + (isCurrent ? " row-current" : "");
+
+      if (!flight) {
+        return `
+          <tr class="${rowClass} row-empty">
+            <td class="col-airline"></td>
+            <td colspan="8" class="empty-cell">&mdash;</td>
+          </tr>`;
+      }
+
+      const airlineCell = `<td class="col-airline"><img src="${UA_LOGO_URL}" class="airline-logo" alt="United"></td>`;
+
+      if (flight.event_type === "BLOCK") {
+        return `
+          <tr class="${rowClass}">
+            ${airlineCell}
+            <td class="col-flight">&mdash;</td>
+            <td colspan="7" class="block-cell">${flight.display_text}</td>
+          </tr>`;
+      }
+
+      // Collapse any run of non-alphanumeric characters (spaces, slashes --
+      // e.g. "TAXIING/LEFT GATE") into a single underscore for the CSS
+      // class name; a plain single-space replace would miss the slash and
+      // any status with more than one space.
+      const statusClass = "status-" + (flight.status || "ON TIME").replace(/[^A-Z0-9]+/gi, "_");
+
+      return `
+        <tr class="${rowClass}">
+          ${airlineCell}
+          <td class="col-flight">${flight.flight_number}</td>
+          <td class="col-code">${flight.dep_code}</td>
+          <td class="col-time">
+            <div class="cell-time">${fmtTime(flight.dep_dt_local)}</div>
+            <div class="cell-date">${fmtDate(flight.dep_dt_local)}</div>
+          </td>
+          <td class="col-gate">${flight.dep_gate ? "Gate " + flight.dep_gate : "No Gate"}</td>
+          <td class="col-code">${flight.arr_code}</td>
+          <td class="col-time">
+            <div class="cell-time">${fmtTime(flight.arr_dt_local)}</div>
+            <div class="cell-date">${fmtDate(flight.arr_dt_local)}</div>
+          </td>
+          <td class="col-gate">${flight.arr_gate ? "Gate " + flight.arr_gate : "No Gate"}</td>
+          <td class="col-status"><span class="status-badge ${statusClass}">${flight.status}</span></td>
+        </tr>`;
+    }
+
+    function updateHeartbeat(lastRefresh) {
+      const heartbeat = document.getElementById("heartbeat");
+      const ok = lastRefresh
+        && lastRefresh.success
+        && (Date.now() - new Date(lastRefresh.fetched_at).getTime()) < STALE_AFTER_MS;
+      heartbeat.classList.toggle("stale", !ok);
+      if (ok) {
+        heartbeat.title = "Live -- calendar refreshing normally (last: "
+          + new Date(lastRefresh.fetched_at).toLocaleTimeString() + ")";
+      } else if (lastRefresh) {
+        heartbeat.title = (lastRefresh.success ? "Stale -- no recent refresh" : "Stale -- last refresh failed: " + (lastRefresh.error || "unknown error"))
+          + " (last attempt: " + new Date(lastRefresh.fetched_at).toLocaleTimeString() + ")";
+      } else {
+        heartbeat.title = "Stale -- no refresh has completed yet";
+      }
+    }
+
+    // --- Flight-record history navigation ---------------------------------
+    // `timeline` is every successfully-parsed flight/block the database has
+    // (past and future), sorted chronologically. `browseAnchor === null`
+    // means "live" mode: the top row always tracks the true current flight
+    // (recomputed every poll), with the next four records below it. Once a
+    // nav button is clicked, browseAnchor pins a five-record sliding window
+    // into `timeline` and the board stops following live position changes
+    // until "Current Flight" is pressed again.
+    let timeline = [];
+    let liveCurrentKey = null;
+    let browseAnchor = null;
+
+    async function fetchTimeline() {
+      try {
+        const res = await fetch("/api/timeline", { cache: "no-store" });
+        timeline = await res.json();
+      } catch (err) {
+        // Keep the previous timeline on failure -- navigation just won't
+        // see new records until the next successful poll.
+      }
+    }
+
+    function timelineIndexOf(occurrenceKey) {
+      if (!occurrenceKey) return -1;
+      return timeline.findIndex((f) => f.occurrence_key === occurrenceKey);
+    }
+
+    function currentWindowStart() {
+      if (browseAnchor !== null) {
+        return Math.max(0, Math.min(Math.max(0, timeline.length - 1), browseAnchor));
+      }
+      const idx = timelineIndexOf(liveCurrentKey);
+      return idx >= 0 ? idx : 0;
+    }
+
+    function renderTable() {
+      const start = currentWindowStart();
+      const rowsHtml = [];
+      for (let i = 0; i < ROWS; i++) {
+        const flight = timeline[start + i] ?? null;
+        rowsHtml.push(renderRow(flight, !!flight && flight.occurrence_key === liveCurrentKey));
+      }
+      document.getElementById("flifo-rows").innerHTML = rowsHtml.join("");
+      updateNavButtons(start);
+    }
+
+    function updateNavButtons(start) {
+      document.getElementById("nav-current").classList.toggle("is-live", browseAnchor === null);
+      document.getElementById("nav-back").disabled = timeline.length === 0 || start <= 0;
+      document.getElementById("nav-forward").disabled = timeline.length === 0 || start >= timeline.length - 1;
+    }
+
+    function enterLiveMode() {
+      browseAnchor = null;
+      renderTable();
+      refreshBoard();
+    }
+
+    function stepBrowse(delta) {
+      if (timeline.length === 0) return;
+      const anchor = browseAnchor !== null ? browseAnchor : currentWindowStart();
+      browseAnchor = Math.max(0, Math.min(timeline.length - 1, anchor + delta));
+      renderTable();
+    }
+
+    document.getElementById("nav-back").addEventListener("click", () => stepBrowse(-1));
+    document.getElementById("nav-forward").addEventListener("click", () => stepBrowse(1));
+    document.getElementById("nav-current").addEventListener("click", enterLiveMode);
+
+    async function refreshBoard() {
+      try {
+        const res = await fetch("/api/status", { cache: "no-store" });
+        const data = await res.json();
+        liveCurrentKey = data.current ? data.current.occurrence_key : null;
+
+        document.getElementById("last-updated").textContent =
+          "Last updated: " + new Date(data.generated_at).toLocaleTimeString();
+        updateHeartbeat(data.last_refresh);
+        document.getElementById("sim-banner").style.display =
+          data.data_mode === "simulated" ? "flex" : "none";
+
+        await fetchTimeline();
+        renderTable();
+      } catch (err) {
+        document.getElementById("last-updated").textContent = "Last updated: (error refreshing)";
+        updateHeartbeat(null);
+      }
+    }
+
+    function tickClock() {
+      document.getElementById("clock").textContent = new Date().toLocaleTimeString();
+    }
+
+    tickClock();
+    setInterval(tickClock, 1000);
+    refreshBoard();
+    setInterval(refreshBoard, REFRESH_MS);
+  </script>
+</body>
+</html>

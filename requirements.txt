@@ -1,0 +1,7 @@
+Flask>=3.1
+requests>=2.34
+icalendar>=7.3
+recurring-ical-events>=3.8
+python-dotenv>=1.2
+airportsdata>=20260803
+tzdata>=2026.3

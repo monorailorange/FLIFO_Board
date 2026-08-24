@@ -1,0 +1,462 @@
+:root {
+  /* United Airlines colorway: Navy + United Blue + Rhapsody/Sky Blue + Silver,
+     with amber/green/red kept purely as functional flight-status cues
+     (standard airport-board convention), not brand colors. */
+  --bg: #0C2340;         /* United Navy -- page background */
+  --panel-bg: #14335E;   /* lighter navy tint -- gives the cards depth against --bg */
+  --border: #A7C4E8;     /* soft sky-blue-silver hairline, distinct against navy */
+  --accent: #66B2E7;     /* United Rhapsody/Sky Blue -- active-toggle fill/border only; body/heading text uses --text (white) for contrast */
+  --amber: #FFB020;      /* status: DELAYED (gold) / current-flight emphasis */
+  --green: #2ECC71;      /* status: ON TIME / TAXIING-LEFT GATE / EN ROUTE / ARRIVED */
+  --red: #FF5C5C;        /* status: DIVERTED (bright red) / parse errors */
+  --deep-red: #EF4444;   /* status: CANCELLED -- deliberately darker/duller than --red */
+  --text-dim: #93A8C7;   /* soft blue-gray -- secondary text (dates, clock, footer) */
+  --text: #F5F8FC;       /* near-white -- primary text, legible on navy */
+
+  /* "Zurich BlkEx BT" is the name Bitstream/Monotype registers this weight
+     under at the OS font-lookup level (vs. its display name "Zurich Black
+     Extended BT") -- both are listed since which one a browser matches
+     depends on how it was installed. This is a commercial font: it only
+     renders if it's actually installed on the device showing the page: it
+     falls back to the previous stack otherwise. To make it render
+     everywhere regardless of local installs, embed a licensed font file
+     via @font-face instead -- see README. */
+  font-family: "Zurich Black Extended BT", "Zurich BlkEx BT", "Bahnschrift", "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header.board-header {
+  padding: 1.25rem 2rem 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid var(--border);
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+header.board-header h1 {
+  font-size: 1.4rem;
+  letter-spacing: 0.15em;
+  margin: 0;
+  color: var(--text);
+  text-transform: uppercase;
+}
+
+.heartbeat {
+  height: 2.25rem;
+  width: auto;
+  display: block;
+  transition: filter 0.6s ease, opacity 0.6s ease;
+}
+
+.heartbeat.stale {
+  filter: grayscale(1) brightness(0.55);
+  opacity: 0.6;
+}
+
+#clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+main.board {
+  flex: 1;
+  padding: 1rem 2rem 1.5rem;
+  overflow-x: auto;
+}
+
+/* --- Traditional airport-board flight table --------------------------- */
+table.flifo-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+table.flifo-table thead th {
+  text-align: left;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 0 1rem 0.6rem;
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+
+table.flifo-table tbody td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.flifo-row.row-current {
+  background: var(--panel-bg);
+  box-shadow: inset 4px 0 0 var(--amber);
+}
+
+.flifo-row.row-empty td {
+  color: var(--text-dim);
+}
+
+.col-airline { width: 1%; }
+
+.airline-logo {
+  width: 92px;
+  height: 92px;
+  display: block;
+  object-fit: contain;
+}
+
+.col-flight {
+  font-size: 1.1rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.col-code {
+  font-size: 1.6rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.col-time { white-space: nowrap; }
+
+.cell-time {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-date {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.col-gate {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.block-cell {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.empty-cell {
+  font-style: italic;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.3rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.status-ON_TIME { color: var(--green); }
+.status-TAXIING_LEFT_GATE { color: var(--green); }
+.status-EN_ROUTE { color: var(--green); }
+.status-DELAYED { color: var(--amber); }
+.status-LANDED { color: var(--green); }
+.status-ARRIVED { color: var(--green); }
+.status-CANCELLED { color: var(--deep-red); }
+.status-DIVERTED { color: var(--red); }
+
+.board-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 2rem 0.25rem;
+}
+
+.nav-btn {
+  font-family: inherit;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.nav-btn:hover:not(:disabled) {
+  opacity: 1;
+  color: var(--text);
+}
+
+.nav-btn:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+.nav-btn-current {
+  text-transform: uppercase;
+}
+
+.nav-btn-current.is-live {
+  color: var(--green);
+  border-color: var(--green);
+  opacity: 0.85;
+}
+
+footer.board-footer {
+  padding: 0.5rem 2rem 1rem;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+footer.board-footer a { color: var(--text-dim); }
+
+.sim-banner {
+  background: var(--amber);
+  color: #1a1300;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.sim-banner a {
+  color: #1a1300;
+  text-decoration: underline;
+}
+
+/* --- Debug calendar view ------------------------------------------------ */
+.debug-wrap {
+  padding: 1.5rem 2rem;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+table.debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2rem;
+}
+
+table.debug-table th, table.debug-table td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+table.debug-table th {
+  background: var(--panel-bg);
+  color: var(--text-dim);
+  position: sticky;
+  top: 0;
+}
+
+.row-error { color: var(--red); }
+.row-ok { color: var(--text); }
+
+.debug-wrap h2 {
+  color: var(--text);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 1rem;
+}
+
+.debug-wrap a { color: var(--text); }
+
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.mode-toggle-label {
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+}
+
+.mode-toggle form { margin: 0; }
+
+.mode-toggle button {
+  font-family: inherit;
+  font-size: 0.85rem;
+  background: var(--panel-bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  cursor: pointer;
+}
+
+.mode-toggle button:hover {
+  color: var(--text);
+}
+
+.mode-toggle button.active {
+  background: var(--accent);
+  color: #06172c;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.debug-wrap .sim-banner {
+  border-radius: 8px;
+  margin: 0 0 1.5rem;
+  font-family: "Zurich Black Extended BT", "Zurich BlkEx BT", "Bahnschrift", "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.flash {
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin: 0 0 1rem;
+  font-family: "Zurich Black Extended BT", "Zurich BlkEx BT", "Bahnschrift", "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+}
+
+.flash-ok {
+  background: var(--green);
+  color: #06210f;
+}
+
+.flash-error {
+  background: var(--deep-red);
+  color: #2a0000;
+}
+
+.manual-entry-note {
+  color: var(--text-dim);
+  max-width: 70ch;
+  margin: 0 0 1rem;
+}
+
+.manual-entry-forms {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.manual-form {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 260px;
+  flex: 1;
+}
+
+.manual-form-title {
+  font-family: "Zurich Black Extended BT", "Zurich BlkEx BT", "Bahnschrift", "DIN Alternate", "Helvetica Neue", Arial, sans-serif;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.manual-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.manual-form input {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.manual-form button {
+  align-self: flex-start;
+  font-family: inherit;
+  font-size: 0.85rem;
+  background: var(--accent);
+  color: #06172c;
+  border: none;
+  border-radius: 999px;
+  padding: 0.45rem 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.manual-form button:hover {
+  filter: brightness(1.1);
+}
+
+.delete-btn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  background: transparent;
+  color: var(--red);
+  border: 1px solid var(--red);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+}
+
+.delete-btn:hover {
+  background: var(--red);
+  color: #2a0000;
+}
+
+.poll-btn {
+  color: var(--accent);
+  border-color: var(--accent);
+  margin-right: 0.4rem;
+}
+
+.poll-btn:hover {
+  background: var(--accent);
+  color: #06172c;
+}

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import config
 import storage
@@ -36,6 +36,27 @@ def refresh_calendar() -> int:
             lookahead_days=config.LOOKAHEAD_DAYS,
         )
         storage.save_events(config.DB_PATH, events)
+
+        # A reroute, a cancelled pairing, or any other change Crew
+        # Scheduling makes shows up on the source calendar as a VEVENT
+        # being edited or removed -- save_events() only ever inserts/
+        # updates, so without this the old, no-longer-real flight would
+        # linger in flifo.db forever and could still win current/next
+        # selection over whatever's actually now on the schedule. See
+        # storage.prune_stale_ics_events() for exactly what's eligible.
+        window_start = fetched_at - timedelta(days=config.LOOKBACK_DAYS)
+        window_end = fetched_at + timedelta(days=config.LOOKAHEAD_DAYS)
+        seen_keys = {e.occurrence_key for e in events if e.parse_ok}
+        stale_keys = storage.prune_stale_ics_events(
+            config.DB_PATH, seen_keys, window_start, window_end,
+            now=fetched_at, grace_minutes=config.ARRIVAL_GRACE_MINUTES,
+        )
+        if stale_keys:
+            logger.info(
+                "Pruned %d record(s) no longer on the source calendar: %s",
+                len(stale_keys), ", ".join(stale_keys),
+            )
+
         storage.log_refresh(config.DB_PATH, fetched_at, success=True, event_count=len(events))
         ok_count = sum(1 for e in events if e.parse_ok)
         logger.info(

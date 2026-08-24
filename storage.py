@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
 from models import FlightEvent
@@ -214,6 +214,63 @@ def update_aeroapi_fields(
             ),
         )
         return cur.rowcount > 0
+
+
+def prune_stale_ics_events(
+    db_path: str,
+    seen_occurrence_keys: set,
+    window_start: datetime,
+    window_end: datetime,
+    now: datetime,
+    grace_minutes: int,
+) -> list[str]:
+    """
+    Deletes ICS-sourced rows that fall inside the just-fetched window but
+    weren't among the occurrence_keys this fetch actually returned -- i.e.
+    the source calendar no longer has them. This is what covers a reroute
+    or a cancelled pairing: Crew Scheduling editing or removing a VEVENT on
+    the subscribed calendar changes or drops its occurrence_key here (built
+    from uid + departure time -- see parser.build_flight_event()), and
+    save_events() is a pure upsert that would otherwise leave the orphaned
+    old row sitting in flifo.db forever, potentially still winning
+    current/next selection over the flight the pilot is actually now on.
+
+    Only rows that haven't expired yet are eligible (see flight_state's
+    grace-window definition) -- anything already flown is left alone
+    unconditionally, even though it's technically inside the lookback
+    window too, since /api/timeline deliberately keeps full history around
+    for browsing. Never touches source='MANUAL' rows.
+
+    Returns the occurrence_keys actually deleted, for logging.
+    """
+    with _connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        candidates = conn.execute(
+            """
+            SELECT occurrence_key, arr_dt_utc FROM flight_events
+            WHERE source = 'ICS' AND parse_ok = 1
+              AND dep_dt_utc >= ? AND dep_dt_utc <= ?
+            """,
+            (window_start.isoformat(), window_end.isoformat()),
+        ).fetchall()
+
+        grace = timedelta(minutes=grace_minutes)
+        stale_keys = []
+        for row in candidates:
+            key = row["occurrence_key"]
+            if key in seen_occurrence_keys:
+                continue
+            arr = datetime.fromisoformat(row["arr_dt_utc"]) if row["arr_dt_utc"] else None
+            if arr is not None and now >= arr + grace:
+                continue  # already flown -- leave historical data alone
+            stale_keys.append(key)
+
+        if stale_keys:
+            conn.executemany(
+                "DELETE FROM flight_events WHERE occurrence_key = ? AND source = 'ICS'",
+                [(k,) for k in stale_keys],
+            )
+        return stale_keys
 
 
 def log_refresh(db_path: str, fetched_at: datetime, success: bool,

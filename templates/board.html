@@ -61,6 +61,11 @@
     // enough to not flicker on a single slow cycle, tight enough to catch a
     // genuinely stuck ingest.
     const STALE_AFTER_MS = {{ refresh_interval_minutes }} * 60 * 1000 * 2;
+    // Same grace window select_current_and_next() uses server-side to decide
+    // a flight has expired (arrived + this many minutes). Used client-side
+    // to keep the live lookahead rows (2-5) in agreement with the backend's
+    // own current/next selection -- see liveDisplayList() below.
+    const GRACE_MS = {{ grace_minutes }} * 60 * 1000;
 
     function fmtTime(iso) {
       if (!iso) return "--:--";
@@ -174,12 +179,55 @@
       return idx >= 0 ? idx : 0;
     }
 
+    // Mirrors flight_state.select_current_and_next()'s is_expired() check:
+    // arrival (already the AeroAPI-adjusted effective arrival when in live
+    // mode, since /api/timeline runs every record through the same
+    // _flight_to_view() the current/next API does) plus the grace window.
+    // BLOCK rows have no arr_dt_utc-driven expiry in the traditional sense
+    // -- they stay "expired" once their span's end passes, same math works.
+    function isExpired(flight, nowMs) {
+      if (!flight || !flight.arr_dt_utc) return false;
+      return nowMs >= new Date(flight.arr_dt_utc).getTime() + GRACE_MS;
+    }
+
+    // The live (non-browsing) board should show the same "skip anything
+    // already expired" rule the backend's next-flight selection uses,
+    // generalized from a single "next" to however many lookahead rows fit
+    // (ROWS - 1) -- otherwise a flight that has already arrived but sits
+    // chronologically right after "current" in the raw timeline (e.g.
+    // sandwiched inside a long-spanning BLOCK's date range) shows up as if
+    // it were still upcoming, disagreeing with what /api/status itself
+    // reports as "next". The pinned current record is always kept even if
+    // it reads as expired by this same check (a BLOCK's own end-of-span
+    // "expiry" doesn't mean it should vanish from the top row).
+    function liveDisplayList() {
+      const nowMs = Date.now();
+      return timeline.filter(
+        (f) => f.occurrence_key === liveCurrentKey || !isExpired(f, nowMs)
+      );
+    }
+
     function renderTable() {
-      const start = currentWindowStart();
       const rowsHtml = [];
-      for (let i = 0; i < ROWS; i++) {
-        const flight = timeline[start + i] ?? null;
-        rowsHtml.push(renderRow(flight, !!flight && flight.occurrence_key === liveCurrentKey));
+      let start;
+      if (browseAnchor !== null) {
+        start = currentWindowStart();
+        for (let i = 0; i < ROWS; i++) {
+          const flight = timeline[start + i] ?? null;
+          rowsHtml.push(renderRow(flight, !!flight && flight.occurrence_key === liveCurrentKey));
+        }
+      } else {
+        const list = liveDisplayList();
+        const idx = list.findIndex((f) => f.occurrence_key === liveCurrentKey);
+        start = idx >= 0 ? idx : 0;
+        for (let i = 0; i < ROWS; i++) {
+          const flight = list[start + i] ?? null;
+          rowsHtml.push(renderRow(flight, !!flight && flight.occurrence_key === liveCurrentKey));
+        }
+        // Nav button enable/disable still reasons about the raw timeline
+        // (browsing isn't restricted to non-expired records), so recompute
+        // that separately from what actually got rendered above.
+        start = currentWindowStart();
       }
       document.getElementById("flifo-rows").innerHTML = rowsHtml.join("");
       updateNavButtons(start);

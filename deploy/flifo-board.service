@@ -1,0 +1,16 @@
+[Unit]
+Description=FLIFO Board (flight status display)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Adjust User/WorkingDirectory/ExecStart if you cloned somewhere other than
+# the default pi user's home directory, or renamed the venv.
+User=pi
+WorkingDirectory=/home/pi/FLIFO_Board
+ExecStart=/home/pi/FLIFO_Board/flifo_venv/bin/python run.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

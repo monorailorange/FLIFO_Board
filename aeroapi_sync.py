@@ -16,19 +16,27 @@ restored from a backup that predates the key, or the file was flat-out
 lost). That's what survives a power outage / service restart even if
 flifo.db doesn't.
 
-Cadence rules (current flight, phase-based on which OOOI fields AeroAPI has
-already reported):
-  1. Not yet departed: starts polling once within 15 minutes of the
-     delay-adjusted estimated departure (or scheduled, if no delay is known
-     yet) -- every 1 minute -- until actual_out appears.
+Cadence rules are keyed off each flight's own OOOI progress, not which
+board slot (current/next) it happens to occupy -- see _cadence_for():
+  1. Not yet departed, and it's the current-slot flight: starts polling
+     once within 15 minutes of the delay-adjusted estimated departure (or
+     scheduled, if no delay is known yet) -- every 1 minute -- until
+     actual_out appears.
+  1b. Not yet departed, and it's the next-slot flight: every 15 minutes,
+      just to keep estimated_out/estimated_in fresh -- this is the only
+      case where board slot actually matters.
   2. actual_out known, actual_off not yet: every 1 minute until actual_off.
   3. actual_off known, actual_on not yet: every 5 minutes until actual_on.
   4. actual_on known, actual_in not yet: every 1 minute until actual_in.
   5. actual_in known: fully resolved, stop polling this record.
 
-The next flight ignores all of that and just polls every 15 minutes
-(picking up estimated_out/estimated_in as they become available), regardless
-of phase.
+Rules 2-5 apply regardless of slot: a flight that's already departed keeps
+its fast/phase-based cadence even if it ends up sitting in "next" -- which
+happens whenever a long-spanning BLOCK is occupying "current" while an
+ordinary flight, in progress, chronologically follows it. Without this, an
+already-airborne flight parked in the "next" slot would get throttled to
+the slow 15-minute "next" cadence meant for flights that haven't happened
+yet, and something like actual_on could sit unpolled for a long stretch.
 """
 from __future__ import annotations
 
@@ -137,9 +145,20 @@ def masked_api_key() -> str:
     return f"{key[:4]}{'*' * (len(key) - 8)}{key[-4:]}"
 
 
-def _current_flight_cadence(flight: FlightEvent, now: datetime) -> Optional[int]:
-    """Seconds between polls for `flight` as the CURRENT flight right now,
-    or None if it isn't due to start yet (or is fully resolved)."""
+def _cadence_for(flight: FlightEvent, is_current_slot: bool, now: datetime) -> Optional[int]:
+    """
+    Seconds between polls for `flight` right now, or None if it isn't due
+    to start yet (or is fully resolved). Based on the flight's own OOOI
+    progress, not which board slot it's sitting in -- a flight that's
+    already in the air doesn't stop needing close tracking just because a
+    long-spanning BLOCK is occupying the "current" slot and pushed it into
+    "next". Only the pre-departure case (no actual_out yet) actually cares
+    about slot: a not-yet-departed "current" flight gets the fast
+    pre-departure-window gating below, while a genuinely-future "next"
+    flight (hasn't happened yet, in either sense) just needs its estimates
+    kept fresh on the slow fixed cadence -- that's the only place
+    `is_current_slot` changes the answer.
+    """
     if flight.actual_in:
         return None  # phase 5: fully resolved
     if flight.actual_on:
@@ -147,18 +166,19 @@ def _current_flight_cadence(flight: FlightEvent, now: datetime) -> Optional[int]
     if flight.actual_off:
         return _CURRENT_SLOW_SECONDS   # phase 3
     if flight.actual_out:
-        return _CURRENT_FAST_SECONDS   # phase 2
-    # phase 1: only once within 15 min of the best departure estimate we have
+        return _CURRENT_FAST_SECONDS   # phase 2: already departed, regardless of slot
+
+    if not is_current_slot:
+        # Hasn't departed and isn't the current-slot flight -- a genuinely
+        # upcoming "next" flight. Just keep estimates fresh.
+        return _NEXT_FLIGHT_SECONDS
+
+    # phase 1 (current slot only): only once within 15 min of the best
+    # departure estimate we have.
     trigger = flight.estimated_out or flight.dep_dt_utc
     if now >= trigger - _PRE_DEPARTURE_WINDOW:
         return _CURRENT_FAST_SECONDS
     return None
-
-
-def _next_flight_cadence(flight: FlightEvent) -> Optional[int]:
-    if flight.actual_in:
-        return None  # already fully resolved -- shouldn't normally happen while still "next"
-    return _NEXT_FLIGHT_SECONDS
 
 
 def _is_due(flight: FlightEvent, cadence_seconds: Optional[int], now: datetime) -> bool:
@@ -259,9 +279,9 @@ def sync_now() -> dict:
 
     targets: list[tuple[FlightEvent, Optional[int]]] = []
     if state.current is not None and state.current.event_type == "FLIGHT":
-        targets.append((state.current, _current_flight_cadence(state.current, now)))
+        targets.append((state.current, _cadence_for(state.current, is_current_slot=True, now=now)))
     if state.next is not None and state.next.event_type == "FLIGHT":
-        targets.append((state.next, _next_flight_cadence(state.next)))
+        targets.append((state.next, _cadence_for(state.next, is_current_slot=False, now=now)))
 
     for flight, cadence in targets:
         if not _is_due(flight, cadence, now):

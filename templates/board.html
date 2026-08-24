@@ -67,16 +67,29 @@
     // own current/next selection -- see liveDisplayList() below.
     const GRACE_MS = {{ grace_minutes }} * 60 * 1000;
 
-    function fmtTime(iso) {
+    // `iso` already carries the correct UTC offset for whichever airport it
+    // belongs to (the backend computes it via that airport's own IANA zone --
+    // see parser.py / models.FlightEvent.effective_*_dt_utc()). But
+    // toLocaleTimeString() with no explicit timeZone renders using the
+    // *viewing device's own* system timezone instead, silently discarding
+    // that -- harmless only when the device happens to sit in the same zone
+    // as the flight. Passing `tz` (the flight's dep_tz/arr_tz) pins the
+    // render to the airport's own local time regardless of what timezone
+    // the board itself (or whatever's viewing it) is set to.
+    function fmtTime(iso, tz) {
       if (!iso) return "--:--";
       const d = new Date(iso);
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const opts = { hour: "2-digit", minute: "2-digit" };
+      if (tz) opts.timeZone = tz;
+      return d.toLocaleTimeString([], opts);
     }
 
-    function fmtDate(iso) {
+    function fmtDate(iso, tz) {
       if (!iso) return "";
       const d = new Date(iso);
-      return d.toLocaleDateString([], { day: "2-digit", month: "short" });
+      const opts = { day: "2-digit", month: "short" };
+      if (tz) opts.timeZone = tz;
+      return d.toLocaleDateString([], opts);
     }
 
     function renderRow(flight, isCurrent) {
@@ -113,14 +126,14 @@
           <td class="col-flight">${flight.flight_number}</td>
           <td class="col-code">${flight.dep_code}</td>
           <td class="col-time">
-            <div class="cell-time">${fmtTime(flight.dep_dt_local)}</div>
-            <div class="cell-date">${fmtDate(flight.dep_dt_local)}</div>
+            <div class="cell-time">${fmtTime(flight.dep_dt_local, flight.dep_tz)}</div>
+            <div class="cell-date">${fmtDate(flight.dep_dt_local, flight.dep_tz)}</div>
           </td>
           <td class="col-gate">${flight.dep_gate ? "Gate " + flight.dep_gate : "No Gate"}</td>
           <td class="col-code">${flight.arr_code}</td>
           <td class="col-time">
-            <div class="cell-time">${fmtTime(flight.arr_dt_local)}</div>
-            <div class="cell-date">${fmtDate(flight.arr_dt_local)}</div>
+            <div class="cell-time">${fmtTime(flight.arr_dt_local, flight.arr_tz)}</div>
+            <div class="cell-date">${fmtDate(flight.arr_dt_local, flight.arr_tz)}</div>
           </td>
           <td class="col-gate">${flight.arr_gate ? "Gate " + flight.arr_gate : "No Gate"}</td>
           <td class="col-status"><span class="status-badge ${statusClass}">${flight.status}</span></td>

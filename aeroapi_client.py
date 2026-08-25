@@ -17,6 +17,7 @@ same day):
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timezone
 from typing import Optional
@@ -177,6 +178,9 @@ def fetch_flight_status(
     if _distance(best) == float("inf"):
         return None
 
+    if debug:
+        logger.info("[AEROAPI_DEBUG] matched flight (raw): %s", json.dumps(best, default=str))
+
     return _extract_ooi_fields(best)
 
 
@@ -219,6 +223,9 @@ def find_flight_for_new_record(
         sched_in = _parse_dt(flight.get("scheduled_in"))
         if sched_in is None:
             continue
+
+        if debug:
+            logger.info("[AEROAPI_DEBUG] matched flight (raw): %s", json.dumps(flight, default=str))
 
         result = _extract_ooi_fields(flight)  # includes dep_gate/arr_gate
         result.update({

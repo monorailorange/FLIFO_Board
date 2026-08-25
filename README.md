@@ -39,6 +39,17 @@ airport's IANA timezone (via `airportsdata`, IATA first, then ICAO for
 scheduling logic. If your feed's titles differ, adjust `TITLE_PATTERN` in
 [parser.py](parser.py).
 
+`FLIGHT_NUMBER` doesn't actually need the carrier code — Crew Scheduling's
+own calendar titles omit it entirely (`1206 TPA 12Aug 1738 - EWR 12Aug
+2035`, not `UA1206 ...`), since it's this pilot's own airline's calendar.
+`parser.normalize_flight_number()` prepends `parser.DEFAULT_CARRIER_CODE`
+("UA") to a bare-digits flight number so AeroAPI lookups (which need a
+carrier-qualified ident to know which airline's flight to match) work —
+anything already carrying a letter prefix is left untouched. Hardcoded
+rather than configurable, same as the rest of this app's United-specific
+branding (the airline column always renders `ua_white.png` regardless of
+actual carrier).
+
 ### Multi-day "block" entries
 
 A non-flight-shaped title (doesn't match the pattern above) that spans at

@@ -204,6 +204,11 @@ def add_flight_record_aeroapi():
         # values right now, so a follow-up write through the same path a
         # scheduled poll uses is needed to actually persist them on insert.
         if event.aeroapi_updated_at is not None:
+            # dep_gate/arr_gate are passed through too -- update_aeroapi_fields()
+            # writes them unconditionally, and the INSERT save_events() just did
+            # already carries whatever AeroAPI (or this form's override fields)
+            # set on `event`; omitting them here would immediately null them
+            # back out.
             storage.update_aeroapi_fields(
                 config.DB_PATH, event.occurrence_key,
                 actual_out=event.actual_out, actual_off=event.actual_off,
@@ -211,6 +216,7 @@ def add_flight_record_aeroapi():
                 estimated_out=event.estimated_out, estimated_in=event.estimated_in,
                 departure_delay_sec=event.departure_delay_sec, arrival_delay_sec=event.arrival_delay_sec,
                 aeroapi_status=event.aeroapi_status, aeroapi_updated_at=event.aeroapi_updated_at,
+                dep_gate=event.dep_gate, arr_gate=event.arr_gate,
             )
         return redirect(url_for("calendar_view", added=f"{event.flight_number} (via AeroAPI)"))
     except (ValueError, AeroApiError) as exc:

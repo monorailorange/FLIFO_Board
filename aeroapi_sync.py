@@ -18,13 +18,22 @@ flifo.db doesn't.
 
 Cadence rules are keyed off each flight's own OOOI progress, not which
 board slot (current/next) it happens to occupy -- see _cadence_for():
-  1. Not yet departed, and it's the current-slot flight: starts polling
-     once within 15 minutes of the delay-adjusted estimated departure (or
-     scheduled, if no delay is known yet) -- every 1 minute -- until
-     actual_out appears.
+  1. Not yet departed, and it's the current-slot flight: every 15 minutes
+     (same as rule 1b below) until within 15 minutes of the delay-adjusted
+     estimated departure (or scheduled, if no delay is known yet), then
+     every 1 minute until actual_out appears. The steady far-out cadence
+     matters as much here as it does for a "next" flight -- a flight
+     sitting in "current" well ahead of its own departure (nothing else
+     currently in scope) is exactly the flight real-world gate assignments
+     (typically published within ~24h of departure) need to be caught for;
+     going completely unpolled until the last 15 minutes, as this used to,
+     meant gates and any other early AeroAPI data would never show up
+     until far too late to matter.
   1b. Not yet departed, and it's the next-slot flight: every 15 minutes,
-      just to keep estimated_out/estimated_in fresh -- this is the only
-      case where board slot actually matters.
+      just to keep estimated_out/estimated_in/gates fresh -- this is the
+      only place board slot actually changes the *far-out* cadence (both
+      slots converge to the same tight pre-departure/rest-of-rules
+      behavior once relevant).
   2. actual_out known, actual_off not yet: every 1 minute until actual_off.
   3. actual_off known, actual_on not yet: every 5 minutes until actual_on --
      except once within 15 minutes of the delay-adjusted estimated arrival
@@ -37,6 +46,15 @@ board slot (current/next) it happens to occupy -- see _cadence_for():
      it's most noticeable on the board.
   4. actual_on known, actual_in not yet: every 1 minute until actual_in.
   5. actual_in known: fully resolved, stop polling this record.
+
+Every poll (any phase above) also refreshes dep_gate/arr_gate whenever
+AeroAPI reports one -- see aeroapi_client._extract_ooi_fields() and
+_poll_one() below. A poll that doesn't report a gate never blanks out one
+already on file (see _poll_one()'s dep_gate/arr_gate fallback), and
+storage.save_events() deliberately never touches these columns on an
+UPDATE, so a routine ICS refresh can't wipe one out either -- only a fresh
+AeroAPI-reported value (or a brand-new manual entry) ever changes a gate
+once it's set.
 
 Rules 2-5 apply regardless of slot: a flight that's already departed keeps
 its fast/phase-based cadence even if it ends up sitting in "next" -- which
@@ -193,12 +211,20 @@ def _cadence_for(flight: FlightEvent, is_current_slot: bool, now: datetime) -> O
         # upcoming "next" flight. Just keep estimates fresh.
         return _NEXT_FLIGHT_SECONDS
 
-    # phase 1 (current slot only): only once within 15 min of the best
-    # departure estimate we have.
+    # phase 1 (current slot): tight 1-minute cadence once within 15 min of
+    # the best departure estimate we have -- same as the next-slot's
+    # steady 15-minute cadence for however long before that. A flight
+    # sitting in "current" well ahead of its own departure (nothing else
+    # currently in scope) is exactly the flight real-world gate
+    # assignments (typically published within ~24h of departure) need to
+    # be caught for; leaving it completely unpolled until the last 15
+    # minutes -- the previous behavior -- meant gates, delays, and
+    # anything else AeroAPI knows well in advance would never show up
+    # until far too late to be useful.
     trigger = flight.estimated_out or flight.dep_dt_utc
     if now >= trigger - _PRE_DEPARTURE_WINDOW:
         return _CURRENT_FAST_SECONDS
-    return None
+    return _NEXT_FLIGHT_SECONDS
 
 
 def _is_due(flight: FlightEvent, cadence_seconds: Optional[int], now: datetime) -> bool:
@@ -227,6 +253,13 @@ def _poll_one(db_path: str, flight: FlightEvent, api_key: str, now: datetime, de
     elif result.get("diverted"):
         status_str = "Diverted"
 
+    # Gates are opportunistic and can come and go in AeroAPI's response
+    # (typically only published within ~24h of departure) -- a poll that
+    # doesn't report one right now must not blank out a gate a previous
+    # poll already found, so fall back to whatever's already on file.
+    dep_gate = result.get("dep_gate") or flight.dep_gate
+    arr_gate = result.get("arr_gate") or flight.arr_gate
+
     storage.update_aeroapi_fields(
         db_path,
         flight.occurrence_key,
@@ -240,6 +273,8 @@ def _poll_one(db_path: str, flight: FlightEvent, api_key: str, now: datetime, de
         arrival_delay_sec=result["arrival_delay_sec"],
         aeroapi_status=status_str,
         aeroapi_updated_at=now,
+        dep_gate=dep_gate,
+        arr_gate=arr_gate,
     )
     logger.info("AeroAPI: updated %s (status=%s)", flight.flight_number, status_str)
     return True

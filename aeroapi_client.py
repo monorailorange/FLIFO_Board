@@ -94,7 +94,15 @@ def _fetch_candidates(ident: str, api_key: str, timeout: int, debug: bool) -> li
 
 
 def _extract_ooi_fields(flight: dict) -> dict:
-    """The OOOI/delay/status fields both lookups return."""
+    """The OOOI/delay/status/gate fields both lookups return. Gates are
+    opportunistic -- real-world gate assignments typically only get
+    published within ~24h of departure, so None here just means AeroAPI
+    doesn't have one *yet*, not that this airport/flight never gets gate
+    data. Field names are speculative (AeroAPI's gate/terminal
+    availability varies by airport and hasn't been confirmed against a
+    live key for every carrier)."""
+    origin = flight.get("origin") or {}
+    destination = flight.get("destination") or {}
     return {
         "actual_out": _parse_dt(flight.get("actual_out")),
         "actual_off": _parse_dt(flight.get("actual_off")),
@@ -107,6 +115,8 @@ def _extract_ooi_fields(flight: dict) -> dict:
         "status": flight.get("status"),
         "cancelled": bool(flight.get("cancelled")),
         "diverted": bool(flight.get("diverted")),
+        "dep_gate": flight.get("gate_origin") or origin.get("gate"),
+        "arr_gate": flight.get("gate_destination") or destination.get("gate"),
     }
 
 
@@ -210,19 +220,13 @@ def find_flight_for_new_record(
         if sched_in is None:
             continue
 
-        result = _extract_ooi_fields(flight)
+        result = _extract_ooi_fields(flight)  # includes dep_gate/arr_gate
         result.update({
             "ident": flight.get("ident_iata") or flight.get("ident") or ident,
             "dep_code": _airport_code(origin),
             "arr_code": _airport_code(destination),
             "dep_dt_utc": sched_out,
             "arr_dt_utc": sched_in,
-            # Speculative field names -- AeroAPI's gate/terminal availability
-            # varies by airport and hasn't been confirmed against a live key.
-            # None here just means the manual-entry form's own gate fields
-            # (or "No Gate") apply instead.
-            "dep_gate": flight.get("gate_origin") or origin.get("gate"),
-            "arr_gate": flight.get("gate_destination") or destination.get("gate"),
         })
         return result
 

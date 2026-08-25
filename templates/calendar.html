@@ -50,7 +50,9 @@
       for the current and next flight on a dynamic schedule -- every 1 minute through
       gate-out/wheels-up/wheels-down/gate-in transitions (and again in the last 15 minutes
       before landing), every 5 minutes for the rest of the time airborne, and every 15 minutes
-      for the next flight's estimates -- and shows actual/estimated times and
+      for either flight's estimates/gate before that (including the current flight days ahead
+      of its own departure, so a gate assigned well in advance still gets picked up) -- and
+      shows actual/estimated times, gate, and
       a live status once available, falling back to the published time until AeroAPI reports
       something newer. This only ever applies to Real World Data; Simulated Data always shows
       locally-derived timing.

@@ -115,12 +115,16 @@ def _dt_str(value: Optional[datetime]) -> Optional[str]:
 
 def save_events(db_path: str, events: Iterable[FlightEvent]) -> None:
     """
-    NOTE for whoever wires up the future gate-assignment API: this upsert
-    always overwrites dep_gate/arr_gate with whatever's on the incoming
-    FlightEvent (currently always None, since the ICS parser has no gate
-    data). If gates start getting populated from a separate live source,
-    that source needs to write onto the FlightEvent before it reaches here
-    -- otherwise the next ICS refresh will silently clobber it back to None.
+    dep_gate/arr_gate are written on INSERT only (a brand-new record's
+    initial value -- typed in manually, or None for an ICS-fed row, which
+    has no gate data of its own) but deliberately left out of the
+    ON CONFLICT ... DO UPDATE clause below. Gates get populated/refreshed
+    afterward through a separate path -- see update_aeroapi_fields() --
+    driven by AeroAPI's recurring poll (see aeroapi_sync.py). Excluding
+    them here is what stops a routine ICS refresh (which re-upserts the
+    same occurrence_key with no gate data of its own every cycle) from
+    silently wiping out whatever AeroAPI already found, the same
+    protection actual_out/actual_in/etc already have.
     """
     rows = [
         (
@@ -164,8 +168,6 @@ def save_events(db_path: str, events: Iterable[FlightEvent]) -> None:
                 parse_error=excluded.parse_error,
                 event_type=excluded.event_type,
                 block_code=excluded.block_code,
-                dep_gate=excluded.dep_gate,
-                arr_gate=excluded.arr_gate,
                 source=excluded.source
             """,
             rows,
@@ -186,6 +188,8 @@ def update_aeroapi_fields(
     arrival_delay_sec: Optional[int] = None,
     aeroapi_status: Optional[str] = None,
     aeroapi_updated_at: Optional[datetime] = None,
+    dep_gate: Optional[str] = None,
+    arr_gate: Optional[str] = None,
 ) -> bool:
     """
     Writes AeroAPI-sourced fields onto an existing row via UPDATE only (no
@@ -193,6 +197,15 @@ def update_aeroapi_fields(
     which never touches these columns. That's what keeps a live poll's
     results from being wiped out by the next routine ICS refresh, without
     any special-casing needed in save_events() itself.
+
+    dep_gate/arr_gate are written unconditionally too (same as every other
+    field here), so callers that don't have a fresher gate value to report
+    must pass the existing one through explicitly rather than omit it --
+    aeroapi_sync._poll_one() does this (falls back to the flight's current
+    dep_gate/arr_gate when a poll doesn't report one), since a transient
+    gap in AeroAPI's response must never blank out a gate that was already
+    known.
+
     Returns True if a row was found and updated.
     """
     with _connect(db_path) as conn:
@@ -202,7 +215,8 @@ def update_aeroapi_fields(
                 actual_out=?, actual_off=?, actual_on=?, actual_in=?,
                 estimated_out=?, estimated_in=?,
                 departure_delay_sec=?, arrival_delay_sec=?,
-                aeroapi_status=?, aeroapi_updated_at=?
+                aeroapi_status=?, aeroapi_updated_at=?,
+                dep_gate=?, arr_gate=?
             WHERE occurrence_key = ?
             """,
             (
@@ -210,6 +224,7 @@ def update_aeroapi_fields(
                 _dt_str(estimated_out), _dt_str(estimated_in),
                 departure_delay_sec, arrival_delay_sec,
                 aeroapi_status, _dt_str(aeroapi_updated_at),
+                dep_gate, arr_gate,
                 occurrence_key,
             ),
         )

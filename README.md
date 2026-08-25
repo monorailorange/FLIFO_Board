@@ -102,10 +102,17 @@ below).
 
 **Gate assignments** (`dep_gate` / `arr_gate` on `FlightEvent`) show "No
 Gate" until populated — either manually (see below) or, opportunistically,
-from an AeroAPI lookup. See the note in `storage.save_events()` if wiring
-up a different gate source — the ICS refresh upsert will clobber a gate
-value back to `None` unless whatever sets it writes through the same
-`FlightEvent` before it reaches `save_events()`.
+from AeroAPI, which is only ever the *initial* value: in AeroAPI mode,
+every recurring poll (not just the one at manual-entry time) re-checks and
+refreshes the gate too, since real-world gate assignments are typically
+only published within ~24h of departure — long after most flights are
+already on the board. A poll that doesn't report a gate never blanks out
+one already known (see `aeroapi_sync._poll_one()`), and a routine ICS
+refresh can't touch a gate at all once set (`storage.save_events()`
+deliberately excludes `dep_gate`/`arr_gate` from its update, the same
+protection `actual_out`/`actual_in`/etc already have) — so once a gate
+shows up, only a fresher AeroAPI value (or a brand-new manual entry) can
+ever change it.
 
 ## Setup
 

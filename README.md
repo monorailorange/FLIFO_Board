@@ -1,11 +1,11 @@
 # flifo_board
 
 Ingests a pilot's subscribed ICS calendar and displays it as a traditional
-airport-style Flight Information (FLIFO) board — a five-row table, current
-flight pinned to the top row with the next four below it — meant for a wall
-display family can glance at. Optionally augmented with live status
-(delays, gate-out/wheels-up/wheels-down/gate-in times) via FlightAware
-AeroAPI.
+airport-style Flight Information (FLIFO) board — a table, current flight
+pinned to the top row with more below it (5 by default, adjustable from
+the debug page) — meant for a wall display family can glance at.
+Optionally augmented with live status (delays, gate-out/wheels-up/
+wheels-down/gate-in times) via FlightAware AeroAPI.
 
 ## How it fits together
 
@@ -264,16 +264,23 @@ record chronologically, not just today's current/next:
   `GET /api/timeline` returns that full sorted set. (An ICS row can still
   be deleted, but only for one specific reason — see "Reroutes / stale
   calendar events" below — and never for merely being old.)
-- `←`/`→` slide a five-row window over that list one record at a time.
-  Whichever row is the true live current flight gets the amber highlight,
-  wherever it lands in the visible five — including scrolling out of view
-  entirely while browsing further away.
+- `←`/`→` slide a window (sized per "Rows Shown" below) over that list one
+  record at a time. Whichever row is the true live current flight gets the
+  amber highlight, wherever it lands in the visible window — including
+  scrolling out of view entirely while browsing further away.
 - Browsing is purely client-side (`templates/board.html`) and per-tab — it
   suspends following live `/api/status` updates until "Current Flight" is
   pressed again, so it won't fight another device's view of the same board
   or silently snap back mid-browse on the 30s poll.
 - "Current Flight" resets to live mode; its green highlight indicates
   whether you're currently in live mode or browsing history.
+
+**Rows Shown** — a "Board Display" control on `/calendar` (1–20, default
+5) sets how many rows the board renders at once, for a bigger physical
+display that can comfortably fit more than the default. Persists in
+`app_settings` (like the real/simulated data toggle — not mirrored to
+`.env`, since losing it just resets to the default 5, not a broken app).
+Takes effect on the board's next poll/reload, no restart needed.
 
 ## Reroutes / stale calendar events
 

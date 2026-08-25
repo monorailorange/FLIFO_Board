@@ -54,7 +54,10 @@
 
   <script>
     const REFRESH_MS = 30 * 1000; // client poll of /api/status + /api/timeline
-    const ROWS = 5; // how many flight records the board shows at once
+    // How many flight/block records the board shows at once -- user
+    // configurable from the debug page's "Board Display" section, mainly
+    // for bigger physical displays that can fit more than the default 5.
+    const ROWS = {{ board_rows }};
     const UA_LOGO_URL = "{{ url_for('static', filename='ua_white.png') }}";
     // The heartbeat gif goes stale if the calendar hasn't refreshed
     // successfully within 2x the server's own refresh interval -- generous

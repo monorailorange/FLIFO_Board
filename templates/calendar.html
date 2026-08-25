@@ -91,6 +91,22 @@
       </form>
     </div>
 
+    <h2>Board Display</h2>
+    <div class="manual-entry-forms">
+      <form method="post" action="{{ url_for('set_board_rows') }}" class="manual-form">
+        <div class="manual-form-title">Rows Shown</div>
+        <label>Rows ({{ min_board_rows }}-{{ max_board_rows }})
+          <input type="number" name="rows" min="{{ min_board_rows }}" max="{{ max_board_rows }}"
+                 value="{{ board_rows }}" required>
+        </label>
+        <button type="submit">Update</button>
+        <p class="manual-entry-note" style="margin:0;">
+          How many flight/block rows the board shows at once (currently {{ board_rows }}).
+          Bump this up for a bigger display that can fit more at a glance.
+        </p>
+      </form>
+    </div>
+
     <h2>Manually Add a Record</h2>
     <p class="manual-entry-note">
       Adds and deletes here always apply to your real stored data, regardless of the

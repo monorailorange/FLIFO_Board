@@ -47,6 +47,33 @@ def _is_live_mode() -> bool:
     return aeroapi_sync.get_status_source() == "AEROAPI" and data_source.get_mode() == "real"
 
 
+# --- Board row count -----------------------------------------------------
+# How many flight/block rows the board shows at once -- user-configurable
+# from /calendar, mainly so a bigger physical display can show more than
+# the original 5 at a time. Lives in app_settings like data_mode (not
+# mirrored to .env like the AeroAPI key/status source) -- losing this on
+# an empty database just resets it to the default, not a broken app.
+_BOARD_ROWS_KEY = "board_rows"
+DEFAULT_BOARD_ROWS = 5
+MIN_BOARD_ROWS = 1
+MAX_BOARD_ROWS = 20
+
+
+def _get_board_rows() -> int:
+    raw = storage.get_setting(config.DB_PATH, _BOARD_ROWS_KEY, str(DEFAULT_BOARD_ROWS))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_BOARD_ROWS
+    return max(MIN_BOARD_ROWS, min(MAX_BOARD_ROWS, value))
+
+
+def _set_board_rows(value: int) -> int:
+    value = max(MIN_BOARD_ROWS, min(MAX_BOARD_ROWS, value))
+    storage.set_setting(config.DB_PATH, _BOARD_ROWS_KEY, str(value))
+    return value
+
+
 def _flight_to_view(flight, live: Optional[bool] = None) -> dict | None:
     if flight is None:
         return None
@@ -85,6 +112,7 @@ def board():
         refresh_interval_minutes=config.REFRESH_INTERVAL_MINUTES,
         grace_minutes=config.ARRIVAL_GRACE_MINUTES,
         board_title=config.BOARD_TITLE,
+        board_rows=_get_board_rows(),
     )
 
 
@@ -98,6 +126,9 @@ def calendar_view():
         status_source=aeroapi_sync.get_status_source(),
         valid_status_sources=aeroapi_sync.VALID_STATUS_SOURCES,
         aeroapi_key_masked=aeroapi_sync.masked_api_key(),
+        board_rows=_get_board_rows(),
+        min_board_rows=MIN_BOARD_ROWS,
+        max_board_rows=MAX_BOARD_ROWS,
         added=request.args.get("added"),
         deleted=request.args.get("deleted"),
         error=request.args.get("error"),
@@ -113,6 +144,22 @@ def set_calendar_mode():
     except ValueError as exc:
         logger.warning("Rejected calendar mode change: %s", exc)
     return redirect(url_for("calendar_view"))
+
+
+@app.route("/calendar/board-rows", methods=["POST"])
+def set_board_rows():
+    raw = request.form.get("rows", "")
+    try:
+        requested = int(raw)
+    except ValueError:
+        return redirect(url_for("calendar_view", error=f"Invalid row count: {raw!r}"))
+    actual = _set_board_rows(requested)
+    if actual != requested:
+        return redirect(url_for(
+            "calendar_view",
+            added=f"Rows shown set to {actual} (clamped to {MIN_BOARD_ROWS}-{MAX_BOARD_ROWS})",
+        ))
+    return redirect(url_for("calendar_view", added=f"Rows shown set to {actual}"))
 
 
 @app.route("/calendar/status-source", methods=["POST"])

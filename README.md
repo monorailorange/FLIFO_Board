@@ -70,6 +70,23 @@ that hasn't itself expired — `select_current_and_next()` instead walks
 forward from current to the first flight/block that also isn't expired.
 See [flight_state.py](flight_state.py).
 
+**A block's effective end is also clamped by the pilot's next flying
+assignment**, on top of its own declared date span. Otherwise a block could
+keep displaying "No Flights Today: X" on a day that's actually a flying
+day (a reserve callout, a reroute) or right past the point a pilot needs to
+have already reported. The clamp is whichever comes *later* of: one hour
+before that next assignment departs, or midnight (departure-station-local)
+commencing the calendar date it departs on. Midnight is a hard floor, not
+just a fallback — for a flight departing shortly after midnight (say,
+00:05), "one hour before" would land the evening *before*, incorrectly
+telling the pilot "no flights today" on a date that starts with a flight 5
+minutes in; midnight instead gives that flight exactly a 5-minute lead
+before departure, matching how little runway a report time that early
+actually has. In AeroAPI mode this cutoff tracks the delay-adjusted
+estimated departure, not the stale original schedule, so a block correctly
+stays up if the next flight ends up pushed back. See
+`flight_state._next_flight_cutoff()`.
+
 **Status** (`ON TIME` / `EN ROUTE` / `ARRIVED`) is inferred purely from
 scheduled times in Local Timing mode (`FlightEvent.status()`), since a bare
 ICS feed has no live ops signal. The full pill vocabulary the board

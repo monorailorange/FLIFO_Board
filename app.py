@@ -29,7 +29,10 @@ storage.init_db(config.DB_PATH)
 # empty (fresh install, restored backup, lost across a power outage, etc)
 # -- see aeroapi_sync.py's module docstring.
 aeroapi_sync.ensure_settings_seeded()
-scheduler = RefreshScheduler(refresh_calendar, config.REFRESH_INTERVAL_MINUTES * 60)
+scheduler = RefreshScheduler(
+    refresh_calendar, config.REFRESH_INTERVAL_MINUTES * 60,
+    retry_seconds=config.REFRESH_RETRY_SECONDS,
+)
 # Separate, much faster scheduler for live AeroAPI polling -- see
 # aeroapi_sync.py for the per-flight dynamic cadence. sync_now() is a
 # cheap no-op whenever status source isn't set to AeroAPI or no key is

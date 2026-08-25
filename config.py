@@ -70,6 +70,11 @@ ICS_DEBUG = _get_bool("ICS_DEBUG", False)
 
 # --- Refresh / board behavior -----------------------------------------------
 REFRESH_INTERVAL_MINUTES = _get_int("REFRESH_INTERVAL_MINUTES", 15)
+# How soon to retry after a *failed* ICS fetch, instead of waiting the full
+# REFRESH_INTERVAL_MINUTES. Matters most right after boot (auto-start via
+# systemd) if the network/DNS isn't ready yet for the very first attempt --
+# see scheduler.RefreshScheduler.
+REFRESH_RETRY_SECONDS = _get_int("REFRESH_RETRY_SECONDS", 60)
 ARRIVAL_GRACE_MINUTES = _get_int("ARRIVAL_GRACE_MINUTES", 15)
 
 # The header text shown at the top of the board (e.g. "Flight Status", or

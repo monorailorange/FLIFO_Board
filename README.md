@@ -152,6 +152,50 @@ Two background schedulers start alongside the Flask server: the ICS refresh
 5000 collides with macOS AirPlay Receiver on some Macs — set `FLASK_PORT`
 in `.env` if you hit that.
 
+A *failed* ICS fetch retries after `REFRESH_RETRY_SECONDS` (default 60)
+instead of waiting the full `REFRESH_INTERVAL_MINUTES` — settling back to
+the normal cadence the moment a fetch succeeds. This matters most on an
+auto-starting install (see "Running unattended" below): the very first
+fetch runs synchronously the instant the service starts, and on a
+Raspberry Pi with no hardware RTC and Wi-Fi still associating, DNS/network
+genuinely might not be ready yet at that exact moment. Without a short
+retry, one bad attempt at boot would leave the board's heartbeat looking
+disconnected for a full 15 minutes even once the network's fine again.
+
+## Running unattended (systemd)
+
+For a board that's meant to just stay up on its own — a Raspberry Pi
+driving a physical display being the main case — `deploy/flifo-board.service`
+is a ready-to-install systemd unit that starts the app on boot and
+restarts it if it ever crashes:
+
+```bash
+sudo cp deploy/flifo-board.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now flifo-board
+```
+
+Edit `User=`, `WorkingDirectory=`, and `ExecStart=` in the unit file first
+if your clone isn't at `/home/pi/FLIFO_Board` under user `pi` (or your venv
+isn't named `flifo_venv`) — it's a plain text file, no templating. Running
+a second, independently-configured board (a different pilot's manual
+commute entries, a separate `.env`/`flifo.db`) on the same machine just
+means copying the unit under a different filename with its own
+`Description=` and paths pointing at that clone.
+
+Useful commands once it's installed:
+
+```bash
+sudo systemctl restart flifo-board   # after a git pull that touches .py files
+sudo systemctl status flifo-board    # confirm it's active *and* enabled
+sudo journalctl -u flifo-board -f    # tail its live logs
+```
+
+A CSS/template-only change (`static/`, `templates/`) just needs a page
+refresh in the browser viewing the board — `restart` is only needed when
+Python code changes, since Flask's template cache and the running
+process's imports don't otherwise pick those up.
+
 ## Debugging fetch failures (`ICS_DEBUG`)
 
 If the calendar host rejects requests (auth errors, unexpected header

@@ -82,16 +82,34 @@ def _pre_report_cutoff(dep_utc: datetime, dep_tz_name: str) -> datetime:
 
 
 def _next_flight_cutoff(
-    ordered: list[FlightEvent], idx: int, use_live_times: bool
+    ordered: list[FlightEvent],
+    idx: int,
+    use_live_times: bool,
+    now: datetime,
+    grace_minutes: int,
 ) -> Optional[datetime]:
-    """Scans forward from `ordered[idx]` (a BLOCK) for the next FLIGHT --
-    skipping over any further BLOCKs in between -- and returns its
-    pre-report cutoff, or None if nothing FLIGHT-shaped follows at all
-    (the ordinary case: the block just ends on its own schedule)."""
+    """Scans forward from `ordered[idx]` (a BLOCK) for the pilot's actual
+    next flying assignment -- skipping over any further BLOCKs, *and* any
+    FLIGHT that's already expired -- and returns its pre-report cutoff, or
+    None if nothing still-upcoming follows at all (the ordinary case: the
+    block just ends on its own schedule).
+
+    The expired-flight skip matters because this app deliberately never
+    deletes history (see "Browsing flight history" in the README): a
+    manually-added test flight, or any other already-completed flight,
+    can easily sit chronologically *inside* a block's declared span. Such
+    a flight isn't the pilot's next assignment -- it's already in the
+    past -- so it must never be allowed to clamp the block's cutoff back
+    into the past too, which would otherwise make an actually-still-valid
+    block expire immediately the moment it's evaluated at all.
+    """
     for later in ordered[idx + 1:]:
-        if later.event_type == "FLIGHT":
-            dep = later.effective_dep_dt_utc() if use_live_times else later.dep_dt_utc
-            return _pre_report_cutoff(dep, later.dep_tz)
+        if later.event_type != "FLIGHT":
+            continue
+        if now >= _expiry_basis(later, use_live_times) + timedelta(minutes=grace_minutes):
+            continue  # already happened -- not a real "next assignment"
+        dep = later.effective_dep_dt_utc() if use_live_times else later.dep_dt_utc
+        return _pre_report_cutoff(dep, later.dep_tz)
     return None
 
 
@@ -106,7 +124,7 @@ def select_current_and_next(
     def is_expired(flight: FlightEvent, idx: int) -> bool:
         natural_expiry = _expiry_basis(flight, use_live_times) + timedelta(minutes=grace_minutes)
         if flight.event_type == "BLOCK":
-            cutoff = _next_flight_cutoff(ordered, idx, use_live_times)
+            cutoff = _next_flight_cutoff(ordered, idx, use_live_times, now, grace_minutes)
             if cutoff is not None:
                 # Whichever comes first actually ends the block's display --
                 # its own natural end (with the usual grace), or the next

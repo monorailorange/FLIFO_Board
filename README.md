@@ -84,7 +84,12 @@ minutes in; midnight instead gives that flight exactly a 5-minute lead
 before departure, matching how little runway a report time that early
 actually has. In AeroAPI mode this cutoff tracks the delay-adjusted
 estimated departure, not the stale original schedule, so a block correctly
-stays up if the next flight ends up pushed back. See
+stays up if the next flight ends up pushed back. Only a *still-upcoming*
+flight counts for this clamp — an already-flown flight (this app never
+deletes history, so one can easily sit chronologically inside a block's
+declared span) is skipped over, the same way the "next" slot's own
+selection already skips expired records, so old history can never
+incorrectly cut a currently-valid block short. See
 `flight_state._next_flight_cutoff()`.
 
 **Status** (`ON TIME` / `EN ROUTE` / `ARRIVED`) is inferred purely from

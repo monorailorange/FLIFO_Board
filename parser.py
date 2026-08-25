@@ -58,9 +58,33 @@ _STATUS_KEYWORDS = ("CANCELLED", "CANCELED", "DELAYED", "DIVERTED", "ARRIVED", "
 # to key off elapsed duration rather than trying to whitelist known codes.
 MULTIDAY_BLOCK_MIN_DAYS = 2
 
+# Crew Scheduling's subscribed calendar gives flight titles with a bare
+# flight number ("1206 TPA 12Aug 1738 - EWR 12Aug 2035"), no carrier code
+# -- since it's this pilot's own airline's calendar, every flight on it is
+# inherently DEFAULT_CARRIER_CODE's. AeroAPI's /flights/{ident} lookup
+# needs a carrier-qualified ident ("UA1206") to know which airline's
+# flight 1206 to match, though -- a bare number could match any carrier's,
+# or nothing at all. This app is built around one specific airline (see
+# the hardcoded ua_white.png airline column, "UNITED AIRLINES" branding,
+# etc), so hardcoding the prefix here is consistent with that rather than
+# a config knob nothing else in the app treats as pluggable.
+DEFAULT_CARRIER_CODE = "UA"
+
 
 class FlightParseError(ValueError):
     pass
+
+
+def normalize_flight_number(raw: str) -> str:
+    """Uppercases and, if it's bare digits with no carrier prefix at all,
+    prepends DEFAULT_CARRIER_CODE -- see the constant's comment above.
+    Anything already carrying a letter prefix (a manually-typed "UA1526",
+    a codeshare like "AA1526", etc) is left exactly as given. Public: also
+    used by manual_entry.py for the "Add Flight (via AeroAPI)" form's
+    typed flight number, so a bare "593" there gets the same treatment
+    before it's used as the AeroAPI lookup ident."""
+    value = raw.upper()
+    return f"{DEFAULT_CARRIER_CODE}{value}" if value.isdigit() else value
 
 
 def lookup_airport_tz(code: str) -> str:
@@ -138,7 +162,7 @@ def parse_summary(summary: str, anchor: date) -> dict:
     arr_hour, arr_minute = _parse_hhmm(fields["arr_time"])
 
     return {
-        "flight_number": fields["flight_number"].upper(),
+        "flight_number": normalize_flight_number(fields["flight_number"]),
         "dep_code": fields["dep_code"].upper(),
         "arr_code": fields["arr_code"].upper(),
         "dep_date": dep_date,

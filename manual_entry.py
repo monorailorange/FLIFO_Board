@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 import aeroapi_client
 from models import FlightEvent
-from parser import build_flight_event, lookup_airport_tz
+from parser import build_flight_event, lookup_airport_tz, normalize_flight_number
 
 
 def add_manual_flight(
@@ -75,7 +75,7 @@ def add_manual_flight_via_aeroapi(
     returns isn't one this app's timezone lookup recognizes.
     Raises aeroapi_client.AeroApiError for actual request failures.
     """
-    ident = (ident or "").strip().upper()
+    ident = normalize_flight_number((ident or "").strip())
     dep_station = (dep_station or "").strip().upper()
     if not ident:
         raise ValueError("A flight number is required.")

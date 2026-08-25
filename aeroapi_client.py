@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -47,10 +47,47 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _fetch_candidates(ident: str, api_key: str, timeout: int, debug: bool) -> list[dict]:
+# Per AeroAPI's own OpenAPI spec: GET /flights/{ident} with no start/end
+# defaults to roughly 11 days in the past through 2 days in the future,
+# hard-capped at 10 days past / 2 days future -- and returns only a single
+# page (max_pages=1) unless told otherwise. For a flight number with
+# regular/daily service, that default page can easily be dominated by
+# recent past occurrences, pushing the specific future occurrence we
+# actually want out of the page entirely. Pass an explicit start/end
+# window scoped tightly around the date we care about instead of relying
+# on that default.
+_LOOKUP_WINDOW_PAD = timedelta(hours=36)
+_MAX_FUTURE = timedelta(days=2)
+_MAX_PAST = timedelta(days=10)
+
+
+def _lookup_window(reference_utc: datetime) -> tuple[str, str]:
+    """ISO8601 (start, end) bracketing `reference_utc`, clamped to
+    AeroAPI's documented hard limits so a request for a date near either
+    edge doesn't get rejected outright. Clamps the reference point itself
+    into the allowed range *before* padding -- padding first and clamping
+    each end independently can invert the window (start after end) when
+    reference_utc is far enough outside the allowed range that its padded
+    window doesn't reach back into it at all (e.g. force-polling a record
+    from weeks ago via the debug page's per-record Poll button)."""
+    now = datetime.now(timezone.utc)
+    lower_bound = now - _MAX_PAST
+    upper_bound = now + _MAX_FUTURE
+    anchor = max(lower_bound, min(reference_utc, upper_bound))
+    start = max(anchor - _LOOKUP_WINDOW_PAD, lower_bound)
+    end = min(anchor + _LOOKUP_WINDOW_PAD, upper_bound)
+    return start.isoformat(), end.isoformat()
+
+
+def _fetch_candidates(
+    ident: str, api_key: str, timeout: int, debug: bool,
+    start: Optional[str] = None, end: Optional[str] = None,
+) -> list[dict]:
     """GET /flights/{ident} and return the raw `flights` list. Raises
     AeroApiError for real failures; an ident with no candidates at all just
-    yields an empty list (not an error)."""
+    yields an empty list (not an error). `start`/`end` (ISO8601) scope the
+    query to a specific date window -- see module note above; omitting
+    both falls back to AeroAPI's own default window."""
     if not api_key:
         raise AeroApiError("No AeroAPI key configured")
     if not ident:
@@ -58,13 +95,18 @@ def _fetch_candidates(ident: str, api_key: str, timeout: int, debug: bool) -> li
 
     url = f"{AEROAPI_BASE_URL}/flights/{ident}"
     headers = {"x-apikey": api_key, "Accept": "application/json"}
+    params = {}
+    if start:
+        params["start"] = start
+    if end:
+        params["end"] = end
 
     if debug:
-        logger.info("[AEROAPI_DEBUG] GET %s", url)
+        logger.info("[AEROAPI_DEBUG] GET %s params=%s", url, params)
         logger.info("[AEROAPI_DEBUG]   x-apikey: %s", _mask_key(api_key))
 
     try:
-        response = requests.get(url, headers=headers, timeout=timeout)
+        response = requests.get(url, headers=headers, params=params, timeout=timeout)
     except requests.RequestException as exc:
         raise AeroApiError(f"AeroAPI request failed: {exc}") from exc
 
@@ -164,7 +206,8 @@ def fetch_flight_status(
     nothing to report yet, e.g. too far out). Raises AeroApiError for
     actual failures (bad key, network error, rate limit, etc).
     """
-    flights = _fetch_candidates(ident, api_key, timeout, debug)
+    start, end = _lookup_window(scheduled_dep_utc)
+    flights = _fetch_candidates(ident, api_key, timeout, debug, start=start, end=end)
     if not flights:
         return None
 
@@ -207,7 +250,14 @@ def find_flight_for_new_record(
     for this flight/endpoint). Returns None if nothing matches (not an
     error). Raises AeroApiError for actual failures.
     """
-    flights = _fetch_candidates(ident, api_key, timeout, debug)
+    # We don't know the departure station's UTC offset yet (that's what
+    # we're looking up) -- anchor the window on local noon of dep_date
+    # treated as UTC. _LOOKUP_WINDOW_PAD (36h) comfortably covers any real
+    # timezone's actual local calendar day for that nominal date either
+    # side of that anchor.
+    reference_utc = datetime(dep_date.year, dep_date.month, dep_date.day, 12, 0, tzinfo=timezone.utc)
+    start, end = _lookup_window(reference_utc)
+    flights = _fetch_candidates(ident, api_key, timeout, debug, start=start, end=end)
 
     for flight in flights:
         origin = flight.get("origin") or {}

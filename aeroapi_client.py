@@ -61,6 +61,16 @@ _MAX_FUTURE = timedelta(days=2)
 _MAX_PAST = timedelta(days=10)
 
 
+def _iso_utc_seconds(dt: datetime) -> str:
+    """Whole-second, Z-suffixed ISO8601 (e.g. "2026-08-21T14:05:00Z") --
+    matches the exact format AeroAPI's own timestamps come back in (see
+    _parse_dt()). A microsecond-precision, "+00:00"-suffixed value (Python's
+    plain .isoformat()) got a 400 Bad Request in practice against the real
+    API, so match its own format for outgoing start/end params too rather
+    than assume any ISO8601 variant is accepted."""
+    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def _lookup_window(reference_utc: datetime) -> tuple[str, str]:
     """ISO8601 (start, end) bracketing `reference_utc`, clamped to
     AeroAPI's documented hard limits so a request for a date near either
@@ -76,7 +86,7 @@ def _lookup_window(reference_utc: datetime) -> tuple[str, str]:
     anchor = max(lower_bound, min(reference_utc, upper_bound))
     start = max(anchor - _LOOKUP_WINDOW_PAD, lower_bound)
     end = min(anchor + _LOOKUP_WINDOW_PAD, upper_bound)
-    return start.isoformat(), end.isoformat()
+    return _iso_utc_seconds(start), _iso_utc_seconds(end)
 
 
 def _fetch_candidates(
@@ -123,7 +133,12 @@ def _fetch_candidates(
     try:
         response.raise_for_status()
     except requests.RequestException as exc:
-        raise AeroApiError(f"AeroAPI request failed: {exc}") from exc
+        # requests' own str(exc) for raise_for_status() never includes the
+        # response body -- a 400 in particular is AeroAPI telling us
+        # exactly what's wrong with the request (bad param format, etc),
+        # and swallowing that meant a bad request just had to be
+        # guessed-and-retried instead of fixed from the actual reason.
+        raise AeroApiError(f"AeroAPI request failed: {exc} -- body: {response.text[:500]}") from exc
 
     try:
         payload = response.json()

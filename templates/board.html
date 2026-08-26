@@ -69,6 +69,10 @@
     // to keep the live lookahead rows (2-5) in agreement with the backend's
     // own current/next selection -- see liveDisplayList() below.
     const GRACE_MS = {{ grace_minutes }} * 60 * 1000;
+    // Minimum-connection warning cadence: flashes every 5s, visible for 2s
+    // of each cycle -- see tickMinConnectionAlert() below.
+    const MIN_CONNECTION_CYCLE_MS = 5 * 1000;
+    const MIN_CONNECTION_VISIBLE_MS = 2 * 1000;
 
     // `iso` already carries the correct UTC offset for whichever airport it
     // belongs to (the backend computes it via that airport's own IANA zone --
@@ -122,7 +126,7 @@
 
       if (flight.event_type === "BLOCK") {
         return `
-          <tr class="${rowClass}">
+          <tr class="${rowClass}" data-occurrence-key="${flight.occurrence_key}">
             ${airlineCell}
             <td class="col-flight">&mdash;</td>
             <td colspan="7" class="block-cell">${flight.display_text}</td>
@@ -138,7 +142,7 @@
       const blinkClass = (status === "DELAYED" || status === "CANCELLED") ? " status-blink" : "";
 
       return `
-        <tr class="${rowClass}">
+        <tr class="${rowClass}" data-occurrence-key="${flight.occurrence_key}">
           ${airlineCell}
           <td class="col-flight">${flight.flight_number}</td>
           <td class="col-code">${flight.dep_code}</td>
@@ -164,6 +168,7 @@
           </td>
           <td class="col-gate">${fmtGate(flight.arr_gate, flight.queried)}</td>
           <td class="col-status"><span class="status-badge ${statusClass}${blinkClass}">${status}</span></td>
+          <td class="min-connection-overlay">MINIMUM CONNECTION</td>
         </tr>`;
     }
 
@@ -247,6 +252,46 @@
       );
     }
 
+    // Minimum-connection warning: row 2 (whatever's immediately after the
+    // live current flight) gets flagged if the gap between row 1's
+    // arrival and row 2's departure -- using whichever times are actually
+    // *displayed* (live/effective in AeroAPI mode, scheduled in Local
+    // Timing, since dep_dt_utc/arr_dt_utc already reflect that) -- is
+    // under 50 minutes. Only meaningful in live mode: browsing history
+    // with the nav buttons isn't a real-time operational situation. Both
+    // rows must be actual FLIGHT records -- a BLOCK has no genuine
+    // "connection" to warn about.
+    const MIN_CONNECTION_THRESHOLD_MINUTES = 50;
+
+    function minConnectionRow2Key() {
+      if (browseAnchor !== null) return null;
+      const list = liveDisplayList();
+      const idx = list.findIndex((f) => f.occurrence_key === liveCurrentKey);
+      if (idx < 0) return null;
+      const row1 = list[idx];
+      const row2 = list[idx + 1];
+      if (!row1 || !row2) return null;
+      if (row1.event_type !== "FLIGHT" || row2.event_type !== "FLIGHT") return null;
+      if (!row1.arr_dt_utc || !row2.dep_dt_utc) return null;
+      const gapMinutes = (new Date(row2.dep_dt_utc) - new Date(row1.arr_dt_utc)) / 60000;
+      return gapMinutes < MIN_CONNECTION_THRESHOLD_MINUTES ? row2.occurrence_key : null;
+    }
+
+    // Ticks independently of renderTable()'s own poll cycle -- looks up
+    // row 2's <tr> fresh each time (by data-occurrence-key, not a cached
+    // element reference) since renderTable() replaces the whole tbody
+    // wholesale every 30s and on every nav click, which would otherwise
+    // leave a stale/detached element reference behind.
+    function tickMinConnectionAlert() {
+      const key = minConnectionRow2Key();
+      if (!key) return;
+      const row = document.querySelector(`#flifo-rows tr[data-occurrence-key="${key}"]`);
+      const overlay = row && row.querySelector(".min-connection-overlay");
+      if (!overlay) return;
+      overlay.classList.add("visible");
+      setTimeout(() => overlay.classList.remove("visible"), MIN_CONNECTION_VISIBLE_MS);
+    }
+
     function renderTable() {
       const rowsHtml = [];
       let start;
@@ -324,6 +369,7 @@
     setInterval(tickClock, 1000);
     refreshBoard();
     setInterval(refreshBoard, REFRESH_MS);
+    setInterval(tickMinConnectionAlert, MIN_CONNECTION_CYCLE_MS);
   </script>
 </body>
 </html>

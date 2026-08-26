@@ -489,6 +489,17 @@ always shows plain scheduled times/gates, no tags):
   and `pill-inverse-blink` keyframes in `static/style.css`. Scoped to
   exactly those two statuses, not `DIVERTED` or anything else.
 
+**Minimum-connection warning** — row 2 (whatever's immediately after the
+live current flight) flashes a full-width amber "MINIMUM CONNECTION" pill
+every 5 seconds (visible for 2 of those) when the gap between row 1's
+arrival and row 2's departure — using whichever times are actually
+displayed, live or scheduled — is under 50 minutes. Both rows must be
+genuine `FLIGHT` records (a `BLOCK` has no real connection to warn about),
+and it's live-mode only — browsing history with the nav buttons suspends
+it, same reasoning as the tags/gates above. See `minConnectionRow2Key()`/
+`tickMinConnectionAlert()` in `board.html` and `.min-connection-overlay`
+in `static/style.css`.
+
 ## Airline column
 
 Every row's Airline column always shows [static/ua_white.png](static/ua_white.png)

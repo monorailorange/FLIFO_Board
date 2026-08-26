@@ -108,6 +108,13 @@ table.flifo-table tbody td {
   vertical-align: middle;
 }
 
+.flifo-row {
+  /* Anchors .min-connection-overlay's absolute positioning to this row
+     specifically, rather than the nearest positioned ancestor further up
+     the page. */
+  position: relative;
+}
+
 .flifo-row.row-current {
   background: var(--panel-bg);
   box-shadow: inset 4px 0 0 var(--amber);
@@ -115,6 +122,36 @@ table.flifo-table tbody td {
 
 .flifo-row.row-empty td {
   color: var(--text-dim);
+}
+
+/* A wide "pill" banner overlaying row 2 -- amber fill, rounded ends via
+   border-radius on a full-width bar rather than a small badge -- used for
+   the minimum-connection warning (see tickMinConnectionAlert() in
+   board.html). Present in the DOM on every flight row, hidden by default;
+   JS toggles .visible on a 5s cycle, visible for 2s of each cycle. Sits
+   above the row's normal content (z-index) rather than replacing it, so
+   toggling it never triggers a layout reflow. */
+.min-connection-overlay {
+  display: none;
+  position: absolute;
+  top: 0.4rem;
+  bottom: 0.4rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 2;
+  border-radius: 999px;
+  background: var(--amber);
+  color: #1a1300;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.min-connection-overlay.visible {
+  display: flex;
 }
 
 .col-airline { width: 1%; }

@@ -140,6 +140,15 @@ table.flifo-table tbody td {
 
 .col-time {
   white-space: nowrap;
+}
+
+/* The flex layout lives on this inner wrapper, not the <td> itself --
+   display:flex directly on a table cell can make it compute its own
+   height differently from sibling cells in the same row, breaking
+   border-collapse's row-alignment (rows' bottom borders "stepping" out
+   of line with each other). Keeping the <td> a plain table-cell and
+   flexing only this inner element avoids that entirely. */
+.time-cell-inner {
   display: flex;
   align-items: center;
   gap: 0.6rem;

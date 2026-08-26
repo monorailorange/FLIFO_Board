@@ -143,19 +143,23 @@
           <td class="col-flight">${flight.flight_number}</td>
           <td class="col-code">${flight.dep_code}</td>
           <td class="col-time">
-            <span class="time-basis-tag basis-${flight.dep_time_basis}">${flight.dep_time_basis}</span>
-            <span class="cell-time-stack">
-              <span class="cell-time">${fmtTime(flight.dep_dt_local, flight.dep_tz)}</span>
-              <span class="cell-date">${fmtDate(flight.dep_dt_local, flight.dep_tz)}</span>
+            <span class="time-cell-inner">
+              <span class="time-basis-tag basis-${flight.dep_time_basis}">${flight.dep_time_basis}</span>
+              <span class="cell-time-stack">
+                <span class="cell-time">${fmtTime(flight.dep_dt_local, flight.dep_tz)}</span>
+                <span class="cell-date">${fmtDate(flight.dep_dt_local, flight.dep_tz)}</span>
+              </span>
             </span>
           </td>
           <td class="col-gate">${fmtGate(flight.dep_gate, flight.queried)}</td>
           <td class="col-code">${flight.arr_code}</td>
           <td class="col-time">
-            <span class="time-basis-tag basis-${flight.arr_time_basis}">${flight.arr_time_basis}</span>
-            <span class="cell-time-stack">
-              <span class="cell-time">${fmtTime(flight.arr_dt_local, flight.arr_tz)}</span>
-              <span class="cell-date">${fmtDate(flight.arr_dt_local, flight.arr_tz)}</span>
+            <span class="time-cell-inner">
+              <span class="time-basis-tag basis-${flight.arr_time_basis}">${flight.arr_time_basis}</span>
+              <span class="cell-time-stack">
+                <span class="cell-time">${fmtTime(flight.arr_dt_local, flight.arr_tz)}</span>
+                <span class="cell-date">${fmtDate(flight.arr_dt_local, flight.arr_tz)}</span>
+              </span>
             </span>
           </td>
           <td class="col-gate">${fmtGate(flight.arr_gate, flight.queried)}</td>

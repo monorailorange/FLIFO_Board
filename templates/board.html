@@ -277,19 +277,35 @@
       return gapMinutes < MIN_CONNECTION_THRESHOLD_MINUTES ? row2.occurrence_key : null;
     }
 
-    // Ticks independently of renderTable()'s own poll cycle -- looks up
-    // row 2's <tr> fresh each time (by data-occurrence-key, not a cached
-    // element reference) since renderTable() replaces the whole tbody
-    // wholesale every 30s and on every nav click, which would otherwise
-    // leave a stale/detached element reference behind.
-    function tickMinConnectionAlert() {
+    // Which phase of the 5s cycle the pill is currently in -- tracked as
+    // explicit state (not just "add a class, setTimeout removes it")
+    // because renderTable() replaces the whole tbody wholesale every 30s
+    // and on every nav click. A setTimeout closing over a specific DOM
+    // node would fire on an orphaned element if a refresh landed mid-flash
+    // -- the freshly-rendered replacement row would just start hidden
+    // regardless of the real phase, and the *next* tickMinConnectionAlert()
+    // call (up to 5s later) is what would have resynced it, producing an
+    // occasional visible timing glitch. Deriving the DOM state from this
+    // variable, applied both by the ticker *and* right after every
+    // renderTable() re-render, means a mid-flash refresh can never lose
+    // track of the real phase -- the new element is synced immediately.
+    let minConnectionVisible = false;
+
+    function applyMinConnectionVisibility() {
       const key = minConnectionRow2Key();
       if (!key) return;
       const row = document.querySelector(`#flifo-rows tr[data-occurrence-key="${key}"]`);
       const overlay = row && row.querySelector(".min-connection-overlay");
-      if (!overlay) return;
-      overlay.classList.add("visible");
-      setTimeout(() => overlay.classList.remove("visible"), MIN_CONNECTION_VISIBLE_MS);
+      if (overlay) overlay.classList.toggle("visible", minConnectionVisible);
+    }
+
+    function tickMinConnectionAlert() {
+      minConnectionVisible = true;
+      applyMinConnectionVisibility();
+      setTimeout(() => {
+        minConnectionVisible = false;
+        applyMinConnectionVisibility();
+      }, MIN_CONNECTION_VISIBLE_MS);
     }
 
     function renderTable() {
@@ -316,6 +332,11 @@
       }
       document.getElementById("flifo-rows").innerHTML = rowsHtml.join("");
       updateNavButtons(start);
+      // Sync the freshly-built row 2 overlay to whatever phase the 5s/1s
+      // cycle actually is right now -- see minConnectionVisible's comment
+      // above for why this matters (a mid-flash refresh must not silently
+      // drop back to hidden and wait for the next tick to notice).
+      applyMinConnectionVisibility();
     }
 
     function updateNavButtons(start) {

@@ -95,6 +95,18 @@
       return d.toLocaleDateString([], opts);
     }
 
+    // Gate display has three states, not just two: a gate value (from
+    // either AeroAPI or manual entry) always wins and is shown regardless
+    // of query status -- a manually-typed gate is real data and shouldn't
+    // get hidden just because AeroAPI hasn't been asked yet. Absent that,
+    // "queried" (has AeroAPI ever reported anything for this flight at
+    // all) distinguishes "haven't looked yet" from "looked, nothing
+    // published yet".
+    function fmtGate(gate, queried) {
+      if (gate) return gate;
+      return queried ? "CNTCT OPS" : "NO GATE";
+    }
+
     function renderRow(flight, isCurrent) {
       const rowClass = "flifo-row" + (isCurrent ? " row-current" : "");
 
@@ -121,7 +133,9 @@
       // e.g. "TAXIING/LEFT GATE") into a single underscore for the CSS
       // class name; a plain single-space replace would miss the slash and
       // any status with more than one space.
-      const statusClass = "status-" + (flight.status || "ON TIME").replace(/[^A-Z0-9]+/gi, "_");
+      const status = flight.status || "ON TIME";
+      const statusClass = "status-" + status.replace(/[^A-Z0-9]+/gi, "_");
+      const blinkClass = (status === "DELAYED" || status === "CANCELLED") ? " status-blink" : "";
 
       return `
         <tr class="${rowClass}">
@@ -129,17 +143,23 @@
           <td class="col-flight">${flight.flight_number}</td>
           <td class="col-code">${flight.dep_code}</td>
           <td class="col-time">
-            <div class="cell-time">${fmtTime(flight.dep_dt_local, flight.dep_tz)}</div>
-            <div class="cell-date">${fmtDate(flight.dep_dt_local, flight.dep_tz)}</div>
+            <span class="time-basis-tag basis-${flight.dep_time_basis}">${flight.dep_time_basis}</span>
+            <span class="cell-time-stack">
+              <span class="cell-time">${fmtTime(flight.dep_dt_local, flight.dep_tz)}</span>
+              <span class="cell-date">${fmtDate(flight.dep_dt_local, flight.dep_tz)}</span>
+            </span>
           </td>
-          <td class="col-gate">${flight.dep_gate ? "Gate " + flight.dep_gate : "No Gate"}</td>
+          <td class="col-gate">${fmtGate(flight.dep_gate, flight.queried)}</td>
           <td class="col-code">${flight.arr_code}</td>
           <td class="col-time">
-            <div class="cell-time">${fmtTime(flight.arr_dt_local, flight.arr_tz)}</div>
-            <div class="cell-date">${fmtDate(flight.arr_dt_local, flight.arr_tz)}</div>
+            <span class="time-basis-tag basis-${flight.arr_time_basis}">${flight.arr_time_basis}</span>
+            <span class="cell-time-stack">
+              <span class="cell-time">${fmtTime(flight.arr_dt_local, flight.arr_tz)}</span>
+              <span class="cell-date">${fmtDate(flight.arr_dt_local, flight.arr_tz)}</span>
+            </span>
           </td>
-          <td class="col-gate">${flight.arr_gate ? "Gate " + flight.arr_gate : "No Gate"}</td>
-          <td class="col-status"><span class="status-badge ${statusClass}">${flight.status}</span></td>
+          <td class="col-gate">${fmtGate(flight.arr_gate, flight.queried)}</td>
+          <td class="col-status"><span class="status-badge ${statusClass}${blinkClass}">${status}</span></td>
         </tr>`;
     }
 

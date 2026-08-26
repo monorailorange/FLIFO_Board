@@ -465,6 +465,30 @@ a *separate write path* from the ICS upsert (`storage.save_events()`) — so
 a routine 15-minute ICS refresh can never wipe out live data that's already
 been polled for that flight.
 
+## Time-basis tags, gate states, and the delayed/cancelled blink
+
+Three small pieces of the board, all AeroAPI-mode only (Local Timing
+always shows plain scheduled times/gates, no tags):
+
+- **SCH / EST / ACT** — a small tag sits just left of each time/date pair,
+  labeling exactly which basis that time reflects: `SCH` (still the
+  published schedule), `EST` (a delay-adjusted estimate — `estimated_out`/
+  `estimated_in`), or `ACT` (the real `actual_out`/`actual_in`). It's the
+  same priority chain `FlightEvent.effective_dep_dt_utc()`/
+  `effective_arr_dt_utc()` already use for which time to *show* — see
+  `app._time_basis()` — just exposed as a label rather than left implicit.
+- **NO GATE / CNTCT OPS / an actual gate** — a gate value (AeroAPI or
+  manually entered) always wins and displays regardless of query status.
+  Absent that: `NO GATE` means this flight has never been queried yet
+  (outside the 24h pre-departure tracking window, or a BLOCK); `CNTCT OPS`
+  means it has been queried and AeroAPI simply hasn't published one yet.
+  See `board.html`'s `fmtGate()`.
+- **Delayed/cancelled blink** — a `DELAYED` or `CANCELLED` status pill
+  alternates every 1 second between its normal outline style and an
+  inverted fill (solid color, dark text) via the `status-blink` CSS class
+  and `pill-inverse-blink` keyframes in `static/style.css`. Scoped to
+  exactly those two statuses, not `DIVERTED` or anything else.
+
 ## Airline column
 
 Every row's Airline column always shows [static/ua_white.png](static/ua_white.png)

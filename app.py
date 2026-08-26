@@ -74,6 +74,24 @@ def _set_board_rows(value: int) -> int:
     return value
 
 
+def _time_basis(actual: Optional[datetime], estimated: Optional[datetime], delay_sec: Optional[int]) -> str:
+    """Labels which basis a displayed time actually reflects -- mirrors the
+    exact priority chain FlightEvent.effective_dep_dt_utc()/
+    effective_arr_dt_utc() already use (actual > delay-adjusted estimate >
+    scheduled), just exposed as a short tag for the board: "ACT" / "EST" /
+    "SCH". A flight that's never been queried naturally falls through to
+    "SCH" here too, same as it would in the effective_*_dt_utc() methods
+    themselves -- no separate "was this ever queried" check needed for the
+    time tag specifically (that's only needed for gate display, since a
+    missing gate is ambiguous between "never asked" and "asked, nothing
+    published yet" in a way a missing actual/estimate isn't)."""
+    if actual:
+        return "ACT"
+    if delay_sec is not None and estimated:
+        return "EST"
+    return "SCH"
+
+
 def _flight_to_view(flight, live: Optional[bool] = None) -> dict | None:
     if flight is None:
         return None
@@ -100,8 +118,19 @@ def _flight_to_view(flight, live: Optional[bool] = None) -> dict | None:
         d["dep_dt_local"] = eff_dep_utc.astimezone(dep_tz).isoformat()
         d["arr_dt_utc"] = eff_arr_utc.isoformat()
         d["arr_dt_local"] = eff_arr_utc.astimezone(arr_tz).isoformat()
+        d["dep_time_basis"] = _time_basis(flight.actual_out, flight.estimated_out, flight.departure_delay_sec)
+        d["arr_time_basis"] = _time_basis(flight.actual_in, flight.estimated_in, flight.arrival_delay_sec)
+        # Distinguishes "never queried yet" from "queried, nothing to
+        # report" for gate display -- see board.html's fmtGate(). Local
+        # Timing mode never queries anything, so it always reports False
+        # (below) rather than reflecting possibly-stale AeroAPI data left
+        # over from before a mode switch.
+        d["queried"] = flight.aeroapi_updated_at is not None
     else:
         d["status"] = flight.status(now)
+        d["dep_time_basis"] = "SCH"
+        d["arr_time_basis"] = "SCH"
+        d["queried"] = False
     return d
 
 

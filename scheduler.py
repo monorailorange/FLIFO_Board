@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class RefreshScheduler:
-    def __init__(self, refresh_fn, interval_seconds: int, retry_seconds: Optional[int] = None):
+    def __init__(
+        self,
+        refresh_fn,
+        interval_seconds: int,
+        retry_seconds: Optional[int] = None,
+        name: str = "refresh",
+    ):
         self.refresh_fn = refresh_fn
+        self.name = name
         self.interval_seconds = interval_seconds
         # After a *failed* attempt, retry sooner than the normal interval
         # instead of waiting a full cycle. This matters most right after
@@ -26,32 +34,60 @@ class RefreshScheduler:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._next_wait = interval_seconds
 
-    def start(self) -> None:
+        # --- status, for surfacing to the UI -------------------------------
+        # board.html's header error banner reads this (via app.py's
+        # /api/status -> RefreshScheduler.status()) to show *why* the board
+        # looks stale and a live countdown to the next retry, instead of
+        # leaving the viewer to guess from a greyed-out heartbeat icon alone.
+        # Guarded by a lock since _run() writes from the background thread
+        # while Flask request threads read it via status().
+        self._lock = threading.Lock()
+        self.last_attempt_at: Optional[datetime] = None
+        self.last_success: Optional[bool] = None
+        self.last_error: Optional[str] = None
+        self.next_attempt_at: Optional[datetime] = None
+
+    def status(self) -> dict:
+        with self._lock:
+            return {
+                "last_attempt_at": self.last_attempt_at.isoformat() if self.last_attempt_at else None,
+                "last_success": self.last_success,
+                "last_error": self.last_error,
+                "next_attempt_at": self.next_attempt_at.isoformat() if self.next_attempt_at else None,
+            }
+
+    def _record(self, success: bool, error: Optional[str]) -> None:
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            self.last_attempt_at = now
+            self.last_success = success
+            self.last_error = error
+            self.next_attempt_at = now + timedelta(seconds=self._next_wait)
+
+    def _attempt(self) -> None:
         try:
             self.refresh_fn()
             self._next_wait = self.interval_seconds
-        except Exception:
-            # Already logged inside refresh_fn; startup shouldn't crash
-            # just because the very first fetch failed (e.g. creds not
-            # filled in yet, or DNS not up yet). Retry soon rather than
-            # waiting a full cycle.
+            self._record(True, None)
+        except Exception as exc:
+            # Already logged in detail inside refresh_fn in most cases; this
+            # warning is what actually shows up as "why" in the log, since
+            # refresh_fn's own logging doesn't know it's running under a
+            # scheduler with a shortened retry cadence.
             logger.warning(
-                "Initial calendar refresh failed; retrying in %ss", self.retry_seconds
+                "%s failed; retrying in %ss instead of the normal %ss (%s)",
+                self.name, self.retry_seconds, self.interval_seconds, exc,
             )
             self._next_wait = self.retry_seconds
+            self._record(False, str(exc))
+
+    def start(self) -> None:
+        self._attempt()
         self._thread.start()
 
     def _run(self) -> None:
         while not self._stop_event.wait(self._next_wait):
-            try:
-                self.refresh_fn()
-                self._next_wait = self.interval_seconds
-            except Exception:
-                logger.warning(
-                    "Scheduled calendar refresh failed; retrying in %ss instead of the normal %ss",
-                    self.retry_seconds, self.interval_seconds,
-                )
-                self._next_wait = self.retry_seconds
+            self._attempt()
 
     def stop(self) -> None:
         self._stop_event.set()

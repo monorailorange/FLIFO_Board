@@ -32,12 +32,38 @@ aeroapi_sync.ensure_settings_seeded()
 scheduler = RefreshScheduler(
     refresh_calendar, config.REFRESH_INTERVAL_MINUTES * 60,
     retry_seconds=config.REFRESH_RETRY_SECONDS,
+    name="Calendar refresh",
 )
+
+
+def _aeroapi_poll_tick() -> dict:
+    """Thin adapter around aeroapi_sync.sync_now() so the scheduler's
+    generic success/failure/retry tracking (see RefreshScheduler.status())
+    applies to AeroAPI polling the same way it already does for the ICS
+    calendar fetch. sync_now() deliberately never raises on its own -- one
+    flight's AeroAPI request failing shouldn't stop the other slot's poll --
+    it just collects failures into summary["errors"] and keeps going. That's
+    the right behavior for the tick itself, but it means the scheduler would
+    otherwise never see a failure to record or retry sooner for. Raising
+    here (only when something genuinely failed, not for the normal "nothing
+    due yet" no-op) is purely so RefreshScheduler treats it like any other
+    failed attempt: shorter retry, and last_error surfaced to the board's
+    header banner via /api/status."""
+    summary = aeroapi_sync.sync_now()
+    if summary["errors"]:
+        raise RuntimeError("; ".join(summary["errors"]))
+    return summary
+
+
 # Separate, much faster scheduler for live AeroAPI polling -- see
 # aeroapi_sync.py for the per-flight dynamic cadence. sync_now() is a
 # cheap no-op whenever status source isn't set to AeroAPI or no key is
 # configured, so ticking every minute costs nothing in Local Timing mode.
-aeroapi_scheduler = RefreshScheduler(aeroapi_sync.sync_now, 60)
+aeroapi_scheduler = RefreshScheduler(
+    _aeroapi_poll_tick, 60,
+    retry_seconds=config.REFRESH_RETRY_SECONDS,
+    name="AeroAPI poll",
+)
 
 
 def _is_live_mode() -> bool:
@@ -344,6 +370,15 @@ def api_status():
             "last_refresh": last_refresh,
             "data_mode": data_source.get_mode(),
             "status_source": aeroapi_sync.get_status_source(),
+            # Powers the header's connectivity error banner + retry
+            # countdown -- see board.html's renderConnectionError(). Each
+            # side tracks itself independently (a stuck calendar fetch and a
+            # failing AeroAPI poll are unrelated failure modes with their
+            # own retry clocks), both via the same RefreshScheduler.status().
+            "connection": {
+                "calendar": scheduler.status(),
+                "aeroapi": aeroapi_scheduler.status(),
+            },
         }
     )
 

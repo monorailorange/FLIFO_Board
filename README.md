@@ -180,6 +180,43 @@ genuinely might not be ready yet at that exact moment. Without a short
 retry, one bad attempt at boot would leave the board's heartbeat looking
 disconnected for a full 15 minutes even once the network's fine again.
 
+## Connectivity errors: header banner and auto-retry
+
+The calendar fetch and the AeroAPI poll are two independent background
+schedulers (`scheduler.RefreshScheduler`), and each tracks its own
+success/failure state. When either one fails, the board's header shows a
+red banner naming which one failed, the error itself, and a live countdown
+to the next automatic retry — instead of just leaving the heartbeat icon
+quietly greyed out with no explanation. Both schedulers already retry a
+failed attempt after `REFRESH_RETRY_SECONDS` (default 60) rather than
+waiting a full cycle (see "Run" above) — the banner just makes that visible.
+The countdown ticks down client-side every second from timestamps already
+in the last `/api/status` response; it doesn't poll the server any faster.
+The banner clears itself the moment either scheduler reports success again,
+with no restart or manual dismissal needed.
+
+This matters most on a headless Raspberry Pi you can't glance a monitor at
+— on boot, before Wi-Fi has associated or DNS has come up, or if the router
+or the upstream service itself is briefly down. The most common reasons a
+poll fails on the Pi:
+
+| Symptom (banner error text) | Likely cause | Self-resolves? |
+| --- | --- | --- |
+| `Failed to resolve 'ccsplus.ual.com'` / `Failed to resolve 'aeroapi.flightaware.com'` | DNS not up yet — most common right at boot, before Wi-Fi has fully associated | Yes, once the network finishes coming up; the 60s retry catches it within a cycle or two |
+| `Connection refused` / `Network is unreachable` | Wi-Fi not associated yet, wrong Wi-Fi credentials, or the router itself is down/rebooting | Usually — resolves once Wi-Fi reconnects; a permanent credential problem needs `raspi-config`/`nmcli` fixed by hand |
+| `Connection timed out` / `Max retries exceeded` | Weak/dropping Wi-Fi signal, or the upstream ISP link is down even though the LAN is fine | Sometimes — depends on whether the outage is local or upstream |
+| `certificate verify failed` / `certificate has expired` | System clock is wrong (no hardware RTC, and NTP hasn't synced yet right after boot) — TLS certs validate against wall-clock time | Yes, once NTP catches up (usually seconds after network comes up) |
+| A captive-portal login page or unexpected HTML instead of calendar/JSON data | Connected to a network requiring a browser-based login (hotel/public Wi-Fi) — not applicable to a normal home install | No — needs the captive portal completed manually; not something a retry can fix |
+| `401`/`403 Client Error` | ICS username/password or AeroAPI key is wrong, expired, or was rotated | No — needs the credential updated in `.env` or `/calendar` |
+| `429 Client Error` | AeroAPI personal-tier rate limit (10 requests/min) or monthly free-credit cap hit | Usually — clears on its own once the limit window rolls over |
+| `500`/`502`/`503 Server Error` | FlightAware's or United's own service is briefly down/degraded | Yes, typically within a few retries |
+| `No AeroAPI key configured` | Flight Info Source is set to AeroAPI but no key has been saved yet | No — needs a key entered on `/calendar` |
+
+Everything in the "self-resolves" column is exactly what the 60-second
+retry is there for. Anything that doesn't self-resolve still shows in the
+banner so it's obvious a person needs to intervene, rather than the board
+just sitting stale indefinitely with no explanation on screen.
+
 ## Running unattended (systemd)
 
 For a board that's meant to just stay up on its own — a Raspberry Pi

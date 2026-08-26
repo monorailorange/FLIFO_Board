@@ -357,6 +357,29 @@ footer.board-footer a { color: var(--text-dim); }
   text-decoration: underline;
 }
 
+/* Connectivity error banner -- see board.html's renderConnectionError().
+   Deliberately styled closer to the status-badge CANCELLED red than the
+   amber sim-banner: this means a fetch is actively failing, not just a
+   preview-mode reminder. Hidden by default; JS toggles .visible once a
+   scheduler (calendar fetch or AeroAPI poll) reports last_success: false. */
+.connection-error {
+  display: none;
+  background: var(--deep-red);
+  color: var(--text);
+  font-weight: 700;
+  text-align: center;
+  padding: 0.5rem 1rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.connection-error.visible {
+  display: flex;
+}
+
 /* --- Debug calendar view ------------------------------------------------ */
 .debug-wrap {
   padding: 1.5rem 2rem;

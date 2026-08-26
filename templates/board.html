@@ -19,6 +19,7 @@
     </div>
     <div id="clock">--:--:--</div>
   </header>
+  <div id="connection-error" class="connection-error"></div>
 
   <main class="board">
     <table class="flifo-table">
@@ -187,6 +188,50 @@
       } else {
         heartbeat.title = "Stale -- no refresh has completed yet";
       }
+    }
+
+    // --- Connectivity error banner ------------------------------------
+    // The heartbeat icon (updateHeartbeat() above) is a quiet, glanceable
+    // "is it fresh" signal, but it can't say *why* the board's gone stale
+    // or when it'll try again -- exactly the thing you want on a headless
+    // Pi you can't SSH into from across the room. /api/status's
+    // "connection" field carries each scheduler's own last_success/
+    // last_error/next_attempt_at (see scheduler.RefreshScheduler.status())
+    // independently for the calendar fetch and the AeroAPI poll, so a
+    // failure in either one surfaces here with a live countdown to its
+    // next retry -- both schedulers already retry a failed attempt after
+    // REFRESH_RETRY_SECONDS (60s default) instead of waiting a full cycle,
+    // this just makes that visible instead of silent.
+    let connectionStatus = null;
+
+    // A stalled calendar fetch means the whole board's data is frozen, not
+    // just one flight's live status -- worth surfacing ahead of an AeroAPI
+    // hiccup if, for whatever reason, both are failing at once.
+    function pickConnectionError(connection) {
+      if (!connection) return null;
+      if (connection.calendar && connection.calendar.last_success === false) {
+        return { source: "Calendar", ...connection.calendar };
+      }
+      if (connection.aeroapi && connection.aeroapi.last_success === false) {
+        return { source: "AeroAPI", ...connection.aeroapi };
+      }
+      return null;
+    }
+
+    function renderConnectionError() {
+      const el = document.getElementById("connection-error");
+      const err = pickConnectionError(connectionStatus);
+      if (!err) {
+        el.classList.remove("visible");
+        return;
+      }
+      let countdown = "";
+      if (err.next_attempt_at) {
+        const secsLeft = Math.round((new Date(err.next_attempt_at).getTime() - Date.now()) / 1000);
+        countdown = secsLeft > 0 ? ` -- retrying in ${secsLeft}s` : " -- retrying now…";
+      }
+      el.textContent = `⚠ ${err.source} unreachable: ${err.last_error || "unknown error"}${countdown}`;
+      el.classList.add("visible");
     }
 
     // --- Flight-record history navigation ---------------------------------
@@ -374,6 +419,9 @@
         document.getElementById("sim-banner").style.display =
           data.data_mode === "simulated" ? "flex" : "none";
 
+        connectionStatus = data.connection;
+        renderConnectionError();
+
         await fetchTimeline();
         renderTable();
       } catch (err) {
@@ -388,6 +436,10 @@
 
     tickClock();
     setInterval(tickClock, 1000);
+    // Recomputed every second purely from the timestamps already fetched
+    // in the last /api/status poll -- no need to hit the server just to
+    // count a countdown down.
+    setInterval(renderConnectionError, 1000);
     refreshBoard();
     setInterval(refreshBoard, REFRESH_MS);
     setInterval(tickMinConnectionAlert, MIN_CONNECTION_CYCLE_MS);

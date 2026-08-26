@@ -469,8 +469,9 @@ is keyed off **each flight's own OOOI progress — not which board slot
   regardless of slot as it approaches its own turn, so nothing is ever
   permanently skipped, just deferred until it's worth a query.
 - `actual_out` known, `actual_off` not yet: every **1 minute**.
-- `actual_off` known, `actual_on` not yet (airborne): every **60 minutes**
-  until within `_AIRBORNE_FAR_WINDOW` (2 hours) of `estimated_on`
+- `actual_off` known, `actual_on` not yet (airborne): every **15 minutes**
+  (the same `_NEXT_FLIGHT_SECONDS` constant the pre-departure medium tier
+  reuses) until within `_AIRBORNE_FAR_WINDOW` (2 hours) of `estimated_on`
   (AeroAPI's own estimated *touchdown* time — not `estimated_in`, which is
   the later estimated *gate* arrival, including taxi-in; falls back to
   scheduled arrival only if no live estimate exists yet at all), then

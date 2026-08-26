@@ -39,8 +39,9 @@ pre-departure tightening below -- see _cadence_for():
      approaches its own departure, so nothing is ever permanently
      skipped, just deferred until it's actually worth a query.
   2. actual_out known, actual_off not yet: every 1 minute until actual_off.
-  3. actual_off known, actual_on not yet (airborne): every 60 minutes
-     until within _AIRBORNE_FAR_WINDOW (2h) of the delay-adjusted
+  3. actual_off known, actual_on not yet (airborne): every 15 minutes
+     (_NEXT_FLIGHT_SECONDS, same constant the pre-departure medium tier
+     reuses) until within _AIRBORNE_FAR_WINDOW (2h) of the delay-adjusted
      estimated touchdown (estimated_on -- not the later estimated_in,
      estimated *gate* arrival), then every 5 minutes, tightening to every
      1 minute once within _PRE_TOUCHDOWN_WINDOW (10 min) of touchdown --

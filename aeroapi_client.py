@@ -168,6 +168,11 @@ def _extract_ooi_fields(flight: dict) -> dict:
         "actual_in": _parse_dt(flight.get("actual_in")),
         "estimated_out": _parse_dt(flight.get("estimated_out")),
         "estimated_in": _parse_dt(flight.get("estimated_in")),
+        # Estimated touchdown, distinct from estimated_in (estimated gate
+        # arrival, which is later by however long taxi-in takes) -- used
+        # to trigger the pre-touchdown fast-polling window against the
+        # right reference point. See aeroapi_sync._cadence_for().
+        "estimated_on": _parse_dt(flight.get("estimated_on")),
         "departure_delay_sec": flight.get("departure_delay"),
         "arrival_delay_sec": flight.get("arrival_delay"),
         "status": flight.get("status"),
@@ -213,7 +218,7 @@ def fetch_flight_status(
     """
     Look up `ident` on AeroAPI and return the flight record whose
     scheduled_out is closest to `scheduled_dep_utc`, as a dict with keys:
-    actual_out/off/on/in, estimated_out/in (datetimes or None),
+    actual_out/off/on/in, estimated_out/in/on (datetimes or None),
     departure_delay_sec/arrival_delay_sec (ints or None), status (str),
     cancelled/diverted (bool).
 

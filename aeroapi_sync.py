@@ -95,7 +95,13 @@ _CURRENT_FAST_SECONDS = 60          # phases 1, 2, 4
 _CURRENT_SLOW_SECONDS = 5 * 60      # phase 3 (airborne)
 _NEXT_FLIGHT_SECONDS = 15 * 60
 _PRE_DEPARTURE_WINDOW = timedelta(minutes=15)
-_PRE_ARRIVAL_WINDOW = timedelta(minutes=15)
+# 10, not 15: this is keyed off estimated_on (estimated touchdown) now,
+# not the later estimated_in (estimated gate arrival) -- a flight is very
+# unlikely to touch down earlier than 10 minutes ahead of AeroAPI's own
+# touchdown estimate, so there's little benefit to starting fast polling
+# any earlier than that against this tighter, more accurate reference
+# point. See _cadence_for()'s phase 3.
+_PRE_TOUCHDOWN_WINDOW = timedelta(minutes=10)
 # No polling at all for a not-yet-departed flight, in either slot, until
 # within this long of its own departure -- caps the pre-departure query
 # cost at a fixed per-flight amount instead of it scaling with however
@@ -199,13 +205,20 @@ def _cadence_for(flight: FlightEvent, is_current_slot: bool, now: datetime) -> O
         # phase 3 (airborne): slow cadence for most of the flight -- no
         # point polling every minute while there are hours left in the
         # air -- but switch to the fast cadence once touchdown is close,
-        # same pre-window pattern as phase 1's departure gating below.
+        # same pre-window pattern as phase 1's departure gating above.
         # Without this, actual_on could sit undetected for up to a full
         # _CURRENT_SLOW_SECONDS after it actually happens, since that's
         # deliberately a long interval; this bounds that lag to roughly
         # _CURRENT_FAST_SECONDS instead, right when it matters most.
-        trigger = flight.estimated_in or flight.arr_dt_utc
-        if now >= trigger - _PRE_ARRIVAL_WINDOW:
+        #
+        # Triggered off estimated_on (estimated *touchdown*), not
+        # estimated_in (estimated *gate* arrival, which runs later by
+        # however long taxi-in takes) -- estimated_on is the right
+        # reference point for anticipating actual_on specifically. Falls
+        # back to the scheduled gate arrival only if no live estimate
+        # exists yet at all (no better reference available).
+        trigger = flight.estimated_on or flight.arr_dt_utc
+        if now >= trigger - _PRE_TOUCHDOWN_WINDOW:
             return _CURRENT_FAST_SECONDS
         return _CURRENT_SLOW_SECONDS
     if flight.actual_out:
@@ -277,6 +290,7 @@ def _poll_one(db_path: str, flight: FlightEvent, api_key: str, now: datetime, de
         actual_in=result["actual_in"],
         estimated_out=result["estimated_out"],
         estimated_in=result["estimated_in"],
+        estimated_on=result["estimated_on"],
         departure_delay_sec=result["departure_delay_sec"],
         arrival_delay_sec=result["arrival_delay_sec"],
         aeroapi_status=status_str,

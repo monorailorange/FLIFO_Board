@@ -144,6 +144,7 @@ def add_manual_flight_via_aeroapi(
         actual_in=result["actual_in"],
         estimated_out=result["estimated_out"],
         estimated_in=result["estimated_in"],
+        estimated_on=result["estimated_on"],
         departure_delay_sec=result["departure_delay_sec"],
         arrival_delay_sec=result["arrival_delay_sec"],
         aeroapi_status=("Cancelled" if result["cancelled"] else "Diverted" if result["diverted"] else result["status"]),

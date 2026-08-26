@@ -261,6 +261,7 @@ def add_flight_record_aeroapi():
                 actual_out=event.actual_out, actual_off=event.actual_off,
                 actual_on=event.actual_on, actual_in=event.actual_in,
                 estimated_out=event.estimated_out, estimated_in=event.estimated_in,
+                estimated_on=event.estimated_on,
                 departure_delay_sec=event.departure_delay_sec, arrival_delay_sec=event.arrival_delay_sec,
                 aeroapi_status=event.aeroapi_status, aeroapi_updated_at=event.aeroapi_updated_at,
                 dep_gate=event.dep_gate, arr_gate=event.arr_gate,

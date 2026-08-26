@@ -199,6 +199,7 @@
           <th>Actual In</th>
           <th>Est Out</th>
           <th>Est In</th>
+          <th>Est On</th>
           <th>Dep Delay</th>
           <th>Arr Delay</th>
           <th>AeroAPI Status</th>
@@ -231,6 +232,7 @@
           <td>{{ e.actual_in or '' }}</td>
           <td>{{ e.estimated_out or '' }}</td>
           <td>{{ e.estimated_in or '' }}</td>
+          <td>{{ e.estimated_on or '' }}</td>
           <td>{{ e.departure_delay_sec if e.departure_delay_sec is not none else '' }}</td>
           <td>{{ e.arrival_delay_sec if e.arrival_delay_sec is not none else '' }}</td>
           <td>{{ e.aeroapi_status or '' }}</td>
@@ -252,7 +254,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="27">No events ingested yet. Check ICS_URL / credentials in .env, then POST /api/refresh.</td></tr>
+        <tr><td colspan="28">No events ingested yet. Check ICS_URL / credentials in .env, then POST /api/refresh.</td></tr>
         {% endfor %}
       </tbody>
     </table>

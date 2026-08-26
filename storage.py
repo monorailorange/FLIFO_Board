@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS flight_events (
     actual_in        TEXT,
     estimated_out    TEXT,
     estimated_in     TEXT,
+    estimated_on     TEXT,
     departure_delay_sec INTEGER,
     arrival_delay_sec   INTEGER,
     aeroapi_status   TEXT,
@@ -90,7 +91,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE flight_events ADD COLUMN source TEXT DEFAULT 'ICS'")
     for col in (
         "actual_out", "actual_off", "actual_on", "actual_in",
-        "estimated_out", "estimated_in", "aeroapi_status", "aeroapi_updated_at",
+        "estimated_out", "estimated_in", "estimated_on",
+        "aeroapi_status", "aeroapi_updated_at",
     ):
         if col not in existing:
             conn.execute(f"ALTER TABLE flight_events ADD COLUMN {col} TEXT")
@@ -184,6 +186,7 @@ def update_aeroapi_fields(
     actual_in: Optional[datetime] = None,
     estimated_out: Optional[datetime] = None,
     estimated_in: Optional[datetime] = None,
+    estimated_on: Optional[datetime] = None,
     departure_delay_sec: Optional[int] = None,
     arrival_delay_sec: Optional[int] = None,
     aeroapi_status: Optional[str] = None,
@@ -213,7 +216,7 @@ def update_aeroapi_fields(
             """
             UPDATE flight_events SET
                 actual_out=?, actual_off=?, actual_on=?, actual_in=?,
-                estimated_out=?, estimated_in=?,
+                estimated_out=?, estimated_in=?, estimated_on=?,
                 departure_delay_sec=?, arrival_delay_sec=?,
                 aeroapi_status=?, aeroapi_updated_at=?,
                 dep_gate=?, arr_gate=?
@@ -221,7 +224,7 @@ def update_aeroapi_fields(
             """,
             (
                 _dt_str(actual_out), _dt_str(actual_off), _dt_str(actual_on), _dt_str(actual_in),
-                _dt_str(estimated_out), _dt_str(estimated_in),
+                _dt_str(estimated_out), _dt_str(estimated_in), _dt_str(estimated_on),
                 departure_delay_sec, arrival_delay_sec,
                 aeroapi_status, _dt_str(aeroapi_updated_at),
                 dep_gate, arr_gate,
@@ -351,6 +354,7 @@ def _row_to_flight_event(row: dict) -> FlightEvent:
         actual_in=parse_dt(row["actual_in"]),
         estimated_out=parse_dt(row["estimated_out"]),
         estimated_in=parse_dt(row["estimated_in"]),
+        estimated_on=parse_dt(row["estimated_on"]),
         departure_delay_sec=row["departure_delay_sec"],
         arrival_delay_sec=row["arrival_delay_sec"],
         aeroapi_status=row["aeroapi_status"],

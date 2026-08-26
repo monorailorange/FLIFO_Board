@@ -67,6 +67,12 @@ class FlightEvent:
     actual_in: Optional[datetime] = None
     estimated_out: Optional[datetime] = None
     estimated_in: Optional[datetime] = None
+    # Estimated touchdown -- distinct from estimated_in (estimated *gate*
+    # arrival, which includes taxi-in time on top). Used to trigger the
+    # fast pre-touchdown polling cadence against the right reference point
+    # (see aeroapi_sync._cadence_for()) instead of approximating off of
+    # estimated_in, which can be meaningfully later.
+    estimated_on: Optional[datetime] = None
     departure_delay_sec: Optional[int] = None
     arrival_delay_sec: Optional[int] = None
     aeroapi_status: Optional[str] = None       # raw status string from AeroAPI, for debugging

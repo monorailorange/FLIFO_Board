@@ -17,23 +17,23 @@ lost). That's what survives a power outage / service restart even if
 flifo.db doesn't.
 
 Cadence rules are keyed off each flight's own OOOI progress, not which
-board slot (current/next) it happens to occupy -- see _cadence_for():
-  1. Not yet departed, and it's the current-slot flight: every 15 minutes
-     (same as rule 1b below) until within 15 minutes of the delay-adjusted
-     estimated departure (or scheduled, if no delay is known yet), then
-     every 1 minute until actual_out appears. The steady far-out cadence
-     matters as much here as it does for a "next" flight -- a flight
-     sitting in "current" well ahead of its own departure (nothing else
-     currently in scope) is exactly the flight real-world gate assignments
-     (typically published within ~24h of departure) need to be caught for;
-     going completely unpolled until the last 15 minutes, as this used to,
-     meant gates and any other early AeroAPI data would never show up
-     until far too late to matter.
-  1b. Not yet departed, and it's the next-slot flight: every 15 minutes,
-      just to keep estimated_out/estimated_in/gates fresh -- this is the
-      only place board slot actually changes the *far-out* cadence (both
-      slots converge to the same tight pre-departure/rest-of-rules
-      behavior once relevant).
+board slot (current/next) it happens to occupy, except for the
+pre-departure phase below -- see _cadence_for():
+  1. Not yet departed, either slot: nothing at all until within
+     _PRE_DEPARTURE_TRACKING_WINDOW (24h) of the delay-adjusted estimated
+     departure (or scheduled, if no delay is known yet) -- gates/delays/
+     estimates essentially never exist any earlier than that, and this
+     caps the pre-departure query cost at a fixed, predictable per-flight
+     amount instead of it scaling with however long a flight sits in
+     scope beforehand (behind a long block, or simply as a "next" flight
+     days out). Within that window: every 15 minutes, tightening to every
+     1 minute once within _PRE_DEPARTURE_WINDOW (15 min) of departure --
+     but the final tightening only applies to the current-slot flight,
+     since imminent departure only matters for whichever flight is
+     actually pinned at the top of the board right now. This is the only
+     place board slot changes the cadence at all; every flight passes
+     through this same check regardless of slot as it approaches its own
+     departure, so nothing is ever permanently skipped, just deferred.
   2. actual_out known, actual_off not yet: every 1 minute until actual_off.
   3. actual_off known, actual_on not yet: every 5 minutes until actual_on --
      except once within 15 minutes of the delay-adjusted estimated arrival
@@ -96,6 +96,11 @@ _CURRENT_SLOW_SECONDS = 5 * 60      # phase 3 (airborne)
 _NEXT_FLIGHT_SECONDS = 15 * 60
 _PRE_DEPARTURE_WINDOW = timedelta(minutes=15)
 _PRE_ARRIVAL_WINDOW = timedelta(minutes=15)
+# No polling at all for a not-yet-departed flight, in either slot, until
+# within this long of its own departure -- caps the pre-departure query
+# cost at a fixed per-flight amount instead of it scaling with however
+# long a flight happens to sit in scope beforehand. See _cadence_for().
+_PRE_DEPARTURE_TRACKING_WINDOW = timedelta(hours=24)
 
 
 def _persist_to_env(var_name: str, value: str) -> None:
@@ -206,23 +211,26 @@ def _cadence_for(flight: FlightEvent, is_current_slot: bool, now: datetime) -> O
     if flight.actual_out:
         return _CURRENT_FAST_SECONDS   # phase 2: already departed, regardless of slot
 
-    if not is_current_slot:
-        # Hasn't departed and isn't the current-slot flight -- a genuinely
-        # upcoming "next" flight. Just keep estimates fresh.
-        return _NEXT_FLIGHT_SECONDS
-
-    # phase 1 (current slot): tight 1-minute cadence once within 15 min of
-    # the best departure estimate we have -- same as the next-slot's
-    # steady 15-minute cadence for however long before that. A flight
-    # sitting in "current" well ahead of its own departure (nothing else
-    # currently in scope) is exactly the flight real-world gate
-    # assignments (typically published within ~24h of departure) need to
-    # be caught for; leaving it completely unpolled until the last 15
-    # minutes -- the previous behavior -- meant gates, delays, and
-    # anything else AeroAPI knows well in advance would never show up
-    # until far too late to be useful.
+    # phase 1 (not yet departed, either slot): nothing at all until within
+    # _PRE_DEPARTURE_TRACKING_WINDOW (24h) of the best departure estimate
+    # we have -- gates/delays/estimates essentially never exist any
+    # earlier than that, and every flight eventually passes through this
+    # check as it approaches its own turn regardless of how long it sat
+    # further back in the queue (behind a long block, or simply as a
+    # "next" flight days out), so nothing is ever permanently skipped,
+    # just deferred until it's actually worth a query. This caps the
+    # per-flight AeroAPI cost at a fixed, predictable amount instead of
+    # scaling with however long a flight happens to sit in scope before
+    # its own departure -- see the query-budget discussion that led here.
+    # Within the window: the steady 15-minute cadence, tightening to
+    # 1-minute once within the final _PRE_DEPARTURE_WINDOW before
+    # departure -- but only for the current-slot flight, since imminent
+    # departure only matters for whichever flight is actually pinned at
+    # the top of the board right now.
     trigger = flight.estimated_out or flight.dep_dt_utc
-    if now >= trigger - _PRE_DEPARTURE_WINDOW:
+    if now < trigger - _PRE_DEPARTURE_TRACKING_WINDOW:
+        return None
+    if is_current_slot and now >= trigger - _PRE_DEPARTURE_WINDOW:
         return _CURRENT_FAST_SECONDS
     return _NEXT_FLIGHT_SECONDS
 

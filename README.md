@@ -411,15 +411,23 @@ a distinct status from `ARRIVED`, since that gap can be significant) →
 **Polling cadence** (`aeroapi_sync._cadence_for()`) is dynamic per flight,
 on its own 60-second scheduler separate from the 15-minute ICS refresh, and
 is keyed off **each flight's own OOOI progress — not which board slot
-(current/next) it happens to occupy**:
+(current/next) it happens to occupy**, except for the pre-departure phase:
 
-- Not yet departed, and it's the *current-slot* flight: starts polling
-  once within 15 minutes of the delay-adjusted estimated departure (or
-  scheduled, if no delay is known yet) — every **1 minute** — until
-  `actual_out` appears.
-- Not yet departed, and it's the *next-slot* flight: fixed **15 minutes**,
-  just to keep `estimated_out`/`estimated_in` fresh. This is the only case
-  where board slot actually changes the cadence.
+- Not yet departed, *either slot*: **nothing at all** until within
+  `_PRE_DEPARTURE_TRACKING_WINDOW` (24 hours) of the delay-adjusted
+  estimated departure (or scheduled, if no delay is known yet) — gates,
+  delays, and estimates essentially never exist any earlier than that, and
+  capping this is what keeps the AeroAPI query budget bounded per flight
+  instead of scaling with however long a flight sits on the board before
+  its own departure (behind a long block, or simply as a "next" flight
+  days out). Within that 24h window: every **15 minutes**, tightening to
+  every **1 minute** once within 15 minutes of departure — but that final
+  tightening only applies to the *current-slot* flight, since imminent
+  departure only matters for whichever flight is actually pinned at the
+  top of the board right now. This is the only place board slot changes
+  the cadence at all; every flight passes through this same 24h check
+  regardless of slot as it approaches its own turn, so nothing is ever
+  permanently skipped, just deferred until it's worth a query.
 - `actual_out` known, `actual_off` not yet: every **1 minute**.
 - `actual_off` known, `actual_on` not yet (airborne): every **5 minutes** —
   except once within 15 minutes of the delay-adjusted estimated arrival (or

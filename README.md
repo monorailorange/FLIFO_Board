@@ -420,28 +420,37 @@ is keyed off **each flight's own OOOI progress — not which board slot
   capping this is what keeps the AeroAPI query budget bounded per flight
   instead of scaling with however long a flight sits on the board before
   its own departure (behind a long block, or simply as a "next" flight
-  days out). Within that 24h window: every **15 minutes**, tightening to
-  every **1 minute** once within 15 minutes of departure — but that final
-  tightening only applies to the *current-slot* flight, since imminent
-  departure only matters for whichever flight is actually pinned at the
-  top of the board right now. This is the only place board slot changes
-  the cadence at all; every flight passes through this same 24h check
+  days out). Within that 24h window: every **60 minutes** until within
+  `_PRE_DEPARTURE_MEDIUM_WINDOW` (6 hours) of departure — gates/delays
+  essentially never appear that early either, so the first ~18 hours of
+  the window would otherwise just be wasted queries — then every
+  **15 minutes**, tightening to every **1 minute** once within 15 minutes
+  of departure. Only that final tightening is *current-slot-only*, since
+  imminent departure only matters for whichever flight is actually pinned
+  at the top of the board right now; the 60min/15min tiers apply to both
+  slots equally. Every flight passes through this same staged check
   regardless of slot as it approaches its own turn, so nothing is ever
   permanently skipped, just deferred until it's worth a query.
 - `actual_out` known, `actual_off` not yet: every **1 minute**.
-- `actual_off` known, `actual_on` not yet (airborne): every **5 minutes** —
-  except once within 10 minutes of `estimated_on` (AeroAPI's own estimated
-  *touchdown* time — not `estimated_in`, which is the later estimated
-  *gate* arrival, including taxi-in; falls back to scheduled arrival only
-  if no live estimate exists yet at all), which switches to every **1
-  minute**, same pre-window idea as the pre-departure case above but for
-  touchdown. Without this, `actual_on` landing anywhere in the middle of
-  that 5-minute gap between polls (which is most of the time) would sit
-  undetected for up to the full 5 minutes before the board's pill updates
-  — this bounds that lag to about a minute instead. 10 minutes rather than
-  15 here specifically because `estimated_on` is a tighter, more accurate
-  reference point than `estimated_in` was — a flight touching down more
-  than 10 minutes ahead of AeroAPI's own touchdown estimate is unlikely.
+- `actual_off` known, `actual_on` not yet (airborne): every **60 minutes**
+  until within `_AIRBORNE_FAR_WINDOW` (2 hours) of `estimated_on`
+  (AeroAPI's own estimated *touchdown* time — not `estimated_in`, which is
+  the later estimated *gate* arrival, including taxi-in; falls back to
+  scheduled arrival only if no live estimate exists yet at all), then
+  every **5 minutes**, tightening to every **1 minute** once within
+  10 minutes of touchdown — same staged-tightening idea as the
+  pre-departure case above, applied to touchdown instead. Without the
+  final tightening, `actual_on` landing anywhere in the middle of the
+  5-minute gap between polls (which is most of the time) would sit
+  undetected for up to the full 5 minutes before the board's pill
+  updates; without the 2-hour coarsening, a long flight would poll every
+  5 minutes for hours before there's anything to find. The 2-hour/5-minute
+  tiers mainly matter for longer flights — a short hop is already inside
+  the 2-hour window well before it's even airborne. 10 minutes (not 15)
+  for the final tightening specifically because `estimated_on` is a
+  tighter, more accurate reference point than `estimated_in` was — a
+  flight touching down more than 10 minutes ahead of AeroAPI's own
+  touchdown estimate is unlikely.
 - `actual_on` known, `actual_in` not yet: every **1 minute**.
 - `actual_in` known: fully resolved, polling stops for that record — and
   the board's 15-minute "still current" grace countdown

@@ -17,8 +17,8 @@ lost). That's what survives a power outage / service restart even if
 flifo.db doesn't.
 
 Cadence rules are keyed off each flight's own OOOI progress, not which
-board slot (current/next) it happens to occupy, except for the
-pre-departure phase below -- see _cadence_for():
+board slot (current/next) it happens to occupy, except for the final
+pre-departure tightening below -- see _cadence_for():
   1. Not yet departed, either slot: nothing at all until within
      _PRE_DEPARTURE_TRACKING_WINDOW (24h) of the delay-adjusted estimated
      departure (or scheduled, if no delay is known yet) -- gates/delays/
@@ -26,24 +26,32 @@ pre-departure phase below -- see _cadence_for():
      caps the pre-departure query cost at a fixed, predictable per-flight
      amount instead of it scaling with however long a flight sits in
      scope beforehand (behind a long block, or simply as a "next" flight
-     days out). Within that window: every 15 minutes, tightening to every
-     1 minute once within _PRE_DEPARTURE_WINDOW (15 min) of departure --
-     but the final tightening only applies to the current-slot flight,
-     since imminent departure only matters for whichever flight is
-     actually pinned at the top of the board right now. This is the only
-     place board slot changes the cadence at all; every flight passes
-     through this same check regardless of slot as it approaches its own
-     departure, so nothing is ever permanently skipped, just deferred.
+     days out). Within that 24h window: every 60 minutes
+     (_PRE_DEPARTURE_FAR_SECONDS) until within _PRE_DEPARTURE_MEDIUM_WINDOW
+     (6h) of departure -- gates/delays essentially never appear that early
+     either, so the first ~18 hours of the window would otherwise just be
+     wasted queries -- then every 15 minutes, tightening to every 1 minute
+     once within _PRE_DEPARTURE_WINDOW (15 min) of departure. Only that
+     final tightening is current-slot-only, since imminent departure only
+     matters for whichever flight is actually pinned at the top of the
+     board right now; the 60min/15min tiers apply to both slots equally.
+     Every flight passes through this same check regardless of slot as it
+     approaches its own departure, so nothing is ever permanently
+     skipped, just deferred until it's actually worth a query.
   2. actual_out known, actual_off not yet: every 1 minute until actual_off.
-  3. actual_off known, actual_on not yet: every 5 minutes until actual_on --
-     except once within 15 minutes of the delay-adjusted estimated arrival
-     (or scheduled, if no delay is known yet), which switches to every 1
-     minute -- same pre-window idea as rule 1, applied to touchdown instead
-     of departure. Without this, actual_on landing anywhere in the middle
-     of that 5-minute gap between polls -- which is most of the time --
-     would sit undetected for however much of it was left, up to the full
-     5 minutes; this bounds that lag to about 1 minute instead, right when
-     it's most noticeable on the board.
+  3. actual_off known, actual_on not yet (airborne): every 60 minutes
+     until within _AIRBORNE_FAR_WINDOW (2h) of the delay-adjusted
+     estimated touchdown (estimated_on -- not the later estimated_in,
+     estimated *gate* arrival), then every 5 minutes, tightening to every
+     1 minute once within _PRE_TOUCHDOWN_WINDOW (10 min) of touchdown --
+     same staged-tightening idea as rule 1, applied to touchdown instead
+     of departure. Without the final tightening, actual_on landing
+     anywhere in the middle of the 5-minute gap between polls (which is
+     most of the time) would sit undetected for however much of it was
+     left; without the 2h-out coarsening, a long flight would poll every
+     5 minutes for hours before there's anything to find. Only matters
+     for longer flights -- a short hop is already inside the 2h window
+     well before it's even airborne.
   4. actual_on known, actual_in not yet: every 1 minute until actual_in.
   5. actual_in known: fully resolved, stop polling this record.
 
@@ -92,8 +100,8 @@ _ENV_STATUS_SOURCE_VAR = "AEROAPI_STATUS_SOURCE"
 _ENV_PATH = config.BASE_DIR / ".env"
 
 _CURRENT_FAST_SECONDS = 60          # phases 1, 2, 4
-_CURRENT_SLOW_SECONDS = 5 * 60      # phase 3 (airborne)
-_NEXT_FLIGHT_SECONDS = 15 * 60
+_CURRENT_SLOW_SECONDS = 5 * 60      # phase 3 (airborne), within _AIRBORNE_FAR_WINDOW of touchdown
+_NEXT_FLIGHT_SECONDS = 15 * 60      # the "medium" tier -- reused for both pre-departure and airborne
 _PRE_DEPARTURE_WINDOW = timedelta(minutes=15)
 # 10, not 15: this is keyed off estimated_on (estimated touchdown) now,
 # not the later estimated_in (estimated gate arrival) -- a flight is very
@@ -107,6 +115,18 @@ _PRE_TOUCHDOWN_WINDOW = timedelta(minutes=10)
 # cost at a fixed per-flight amount instead of it scaling with however
 # long a flight happens to sit in scope beforehand. See _cadence_for().
 _PRE_DEPARTURE_TRACKING_WINDOW = timedelta(hours=24)
+# Outer "far" tiers, coarser than the existing "medium" cadence, for the
+# stretches of the 24h pre-departure window and the airborne phase where
+# a change is genuinely unlikely -- gates/delays essentially never appear
+# more than ~6h out, and nothing relevant to actual_on can happen more
+# than a couple hours before touchdown regardless of how long the flight
+# actually is. Cuts the pre-departure/airborne query cost substantially
+# for flights that sit in scope a long time before departure, or fly a
+# long time before landing, without touching the precision of anything
+# closer to an actual OOOI transition. See _cadence_for().
+_PRE_DEPARTURE_MEDIUM_WINDOW = timedelta(hours=6)
+_PRE_DEPARTURE_FAR_SECONDS = 60 * 60
+_AIRBORNE_FAR_WINDOW = timedelta(hours=2)
 
 
 def _persist_to_env(var_name: str, value: str) -> None:
@@ -220,7 +240,13 @@ def _cadence_for(flight: FlightEvent, is_current_slot: bool, now: datetime) -> O
         trigger = flight.estimated_on or flight.arr_dt_utc
         if now >= trigger - _PRE_TOUCHDOWN_WINDOW:
             return _CURRENT_FAST_SECONDS
-        return _CURRENT_SLOW_SECONDS
+        if now >= trigger - _AIRBORNE_FAR_WINDOW:
+            return _CURRENT_SLOW_SECONDS
+        # More than _AIRBORNE_FAR_WINDOW from touchdown -- nothing relevant
+        # to actual_on can happen yet regardless of how long the flight
+        # actually is; only matters for longer flights (a short hop is
+        # already inside this window well before it's even airborne).
+        return _NEXT_FLIGHT_SECONDS
     if flight.actual_out:
         return _CURRENT_FAST_SECONDS   # phase 2: already departed, regardless of slot
 
@@ -235,17 +261,24 @@ def _cadence_for(flight: FlightEvent, is_current_slot: bool, now: datetime) -> O
     # per-flight AeroAPI cost at a fixed, predictable amount instead of
     # scaling with however long a flight happens to sit in scope before
     # its own departure -- see the query-budget discussion that led here.
-    # Within the window: the steady 15-minute cadence, tightening to
-    # 1-minute once within the final _PRE_DEPARTURE_WINDOW before
-    # departure -- but only for the current-slot flight, since imminent
-    # departure only matters for whichever flight is actually pinned at
-    # the top of the board right now.
+    #
+    # Within that 24h window: 60-minute cadence until within
+    # _PRE_DEPARTURE_MEDIUM_WINDOW (6h) of departure -- gates/delays
+    # essentially never appear any earlier than that either, so the first
+    # ~18 hours of the window would otherwise just be wasted queries --
+    # then 15 minutes, tightening to 1 minute once within the final
+    # _PRE_DEPARTURE_WINDOW (15 min) of departure. That final tightening
+    # only applies to the current-slot flight, since imminent departure
+    # only matters for whichever flight is actually pinned at the top of
+    # the board right now; the 60min/15min tiers apply to both slots.
     trigger = flight.estimated_out or flight.dep_dt_utc
     if now < trigger - _PRE_DEPARTURE_TRACKING_WINDOW:
         return None
     if is_current_slot and now >= trigger - _PRE_DEPARTURE_WINDOW:
         return _CURRENT_FAST_SECONDS
-    return _NEXT_FLIGHT_SECONDS
+    if now >= trigger - _PRE_DEPARTURE_MEDIUM_WINDOW:
+        return _NEXT_FLIGHT_SECONDS
+    return _PRE_DEPARTURE_FAR_SECONDS
 
 
 def _is_due(flight: FlightEvent, cadence_seconds: Optional[int], now: datetime) -> bool:

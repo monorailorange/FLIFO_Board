@@ -47,12 +47,13 @@
     <p class="manual-entry-note">
       "Local Timing" derives status purely from the published schedule (the app's original
       behavior). "AeroAPI" polls <a href="https://www.flightaware.com/commercial/aeroapi/" target="_blank" rel="noopener">FlightAware AeroAPI</a>
-      for the current and next flight on a dynamic schedule -- every 1 minute through
-      gate-out/wheels-up/wheels-down/gate-in transitions (and again in the last 15 minutes
-      before landing), every 5 minutes for the rest of the time airborne, every 15 minutes for
-      either flight's estimates/gate starting 24 hours before departure, and nothing at all
-      before that (caps the AeroAPI query cost at a fixed amount per flight, no matter how
-      long it sits on the board ahead of time) -- and shows actual/estimated times, gate, and
+      for the current and next flight on a dynamic schedule, staged coarser-to-finer as each
+      moment approaches -- every 1 minute through gate-out/wheels-up/wheels-down/gate-in
+      transitions (and again in the last 15 minutes before departure / 10 before touchdown),
+      every 5 minutes for the last 2 hours airborne before that, every 15 minutes for the last
+      6 hours before departure, every 60 minutes for the rest of the 24-hour pre-departure
+      window, and nothing at all before that (caps the AeroAPI query cost at a fixed amount per
+      flight, no matter how long it sits on the board ahead of time) -- and shows actual/estimated times, gate, and
       a live status once available, falling back to the published time until AeroAPI reports
       something newer. This only ever applies to Real World Data; Simulated Data always shows
       locally-derived timing.

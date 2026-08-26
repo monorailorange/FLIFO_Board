@@ -124,13 +124,16 @@ table.flifo-table tbody td {
   color: var(--text-dim);
 }
 
-/* A wide "pill" banner overlaying row 2 -- amber fill, rounded ends via
+/* A wide "pill" banner overlaying row 2 -- semi-transparent amber fill
+   (so the row underneath still shows through), rounded ends via
    border-radius on a full-width bar rather than a small badge -- used for
    the minimum-connection warning (see tickMinConnectionAlert() in
    board.html). Present in the DOM on every flight row, hidden by default;
-   JS toggles .visible on a 5s cycle, visible for 2s of each cycle. Sits
+   JS toggles .visible on a 5s cycle, visible for 1s of each cycle. Sits
    above the row's normal content (z-index) rather than replacing it, so
-   toggling it never triggers a layout reflow. */
+   toggling it never triggers a layout reflow. Text stays fully opaque
+   (not part of the transparency) so it's still legible against whatever
+   shows through the fill. */
 .min-connection-overlay {
   display: none;
   position: absolute;
@@ -140,7 +143,7 @@ table.flifo-table tbody td {
   right: 0.75rem;
   z-index: 2;
   border-radius: 999px;
-  background: var(--amber);
+  background: rgba(255, 176, 32, 0.75); /* var(--amber) at 75% opacity */
   color: #1a1300;
   align-items: center;
   justify-content: center;

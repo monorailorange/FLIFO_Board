@@ -69,10 +69,10 @@
     // to keep the live lookahead rows (2-5) in agreement with the backend's
     // own current/next selection -- see liveDisplayList() below.
     const GRACE_MS = {{ grace_minutes }} * 60 * 1000;
-    // Minimum-connection warning cadence: flashes every 5s, visible for 2s
+    // Minimum-connection warning cadence: flashes every 5s, visible for 1s
     // of each cycle -- see tickMinConnectionAlert() below.
     const MIN_CONNECTION_CYCLE_MS = 5 * 1000;
-    const MIN_CONNECTION_VISIBLE_MS = 2 * 1000;
+    const MIN_CONNECTION_VISIBLE_MS = 1 * 1000;
 
     // `iso` already carries the correct UTC offset for whichever airport it
     // belongs to (the backend computes it via that airport's own IANA zone --

@@ -167,7 +167,7 @@ table.flifo-table tbody td {
 }
 
 .col-flight {
-  font-size: 1.7rem;
+  font-size: 2.2rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -200,7 +200,7 @@ table.flifo-table tbody td {
 }
 
 .cell-time {
-  font-size: 1.7rem;
+  font-size: 2.4rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -250,9 +250,9 @@ table.flifo-table tbody td {
 
 .status-badge {
   display: inline-block;
-  padding: 0.5rem 1.25rem;
+  padding: 0.6rem 1.5rem;
   border-radius: 999px;
-  font-size: 1.3rem;
+  font-size: 1.7rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 600;

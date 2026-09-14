@@ -410,6 +410,13 @@ table.debug-table th {
 .row-error { color: var(--red); }
 .row-ok { color: var(--text); }
 
+/* Virtual FAKE positioning legs -- real rows in the feed, but excluded
+   from the board/AeroAPI entirely (see storage.get_valid_flight_events()).
+   Dimmed here rather than colored like row-error, since it's not a
+   problem -- just a reminder while scanning this table that the row
+   below is a scheduling-system placeholder, not a real flight. */
+.row-fake { color: var(--text-dim); font-style: italic; }
+
 .debug-wrap h2 {
   color: var(--text);
   letter-spacing: 0.1em;

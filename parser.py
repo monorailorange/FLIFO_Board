@@ -70,9 +70,34 @@ MULTIDAY_BLOCK_MIN_DAYS = 2
 # a config knob nothing else in the app treats as pluggable.
 DEFAULT_CARRIER_CODE = "UA"
 
+# Crew Scheduling's own placeholder ident for a virtual, non-operating
+# positioning leg -- used purely to satisfy the scheduling system's own
+# requirement that a trip/pairing always begin and end at the pilot's
+# domicile, even when the actual operating leg doesn't. E.g. domiciled EWR,
+# operating a single real MCO-ORD leg: the feed brackets it with a virtual
+# "FAKE EWR MCO..." before and "FAKE ORD EWR..." after. Each one carries a
+# real station and time in the title, exactly like an ordinary flight --
+# but no aircraft ever moves. There's nothing to look up on AeroAPI for it
+# (it will never match any real ident), and it should never occupy the
+# board's current/next slot -- see storage.get_valid_flight_events(),
+# which is what actually excludes it from every eligible-flight list
+# (board selection, history browsing, AeroAPI polling targets) while still
+# leaving it visible in the raw /calendar debug view.
+FAKE_FLIGHT_NUMBER = "FAKE"
+
 
 class FlightParseError(ValueError):
     pass
+
+
+def is_fake_leg(flight_number: Optional[str]) -> bool:
+    """True for a virtual FAKE positioning leg -- see FAKE_FLIGHT_NUMBER's
+    comment above. Flight numbers are always run through
+    normalize_flight_number() before being stored, which uppercases them,
+    so an exact-case comparison against FAKE_FLIGHT_NUMBER is sufficient
+    here; this still re-uppercases defensively in case it's ever called on
+    a raw, not-yet-normalized value."""
+    return (flight_number or "").strip().upper() == FAKE_FLIGHT_NUMBER
 
 
 def normalize_flight_number(raw: str) -> str:

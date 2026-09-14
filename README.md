@@ -50,6 +50,29 @@ rather than configurable, same as the rest of this app's United-specific
 branding (the airline column always renders `ua_white.png` regardless of
 actual carrier).
 
+### Virtual "FAKE" positioning legs
+
+Crew Scheduling's system sometimes has to satisfy its own requirement that
+a trip/pairing always begin and end at the pilot's domicile, even when the
+actual operating leg doesn't. If you're domiciled EWR but operating a
+single real MCO-ORD leg, the feed brackets it with a virtual leg before and
+after -- `FAKE EWR MCO...` then the real `1234 MCO ORD...` then
+`FAKE ORD EWR...`. Each `FAKE` entry parses exactly like an ordinary flight
+(real stations, real times), but no aircraft ever actually moves.
+
+`parser.is_fake_leg()` (checked against the normalized flight number,
+exact match on `"FAKE"`) is used by `storage.get_valid_flight_events()` to
+exclude these from every list that matters operationally: the board's
+current/next selection, history browsing (`/api/timeline`), and AeroAPI's
+polling-target selection -- so a `FAKE` leg can never occupy a board slot,
+never gets queried against AeroAPI (which could never match it anyway),
+and history browsing skips straight from whatever's actually current to
+the real leg it's bracketing, exactly as if the `FAKE` rows weren't in the
+feed at all. They still show up in the raw `/calendar` debug view (dimmed,
+italic, marked "(virtual)"), with no Poll button, so you can confirm the
+feed is bracketing your real legs correctly without them ever reaching the
+board itself.
+
 ### Multi-day "block" entries
 
 A non-flight-shaped title (doesn't match the pattern above) that spans at

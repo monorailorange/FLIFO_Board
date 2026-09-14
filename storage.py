@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
 
 from models import FlightEvent
+from parser import is_fake_leg
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS flight_events (
@@ -363,9 +364,23 @@ def _row_to_flight_event(row: dict) -> FlightEvent:
 
 
 def get_valid_flight_events(db_path: str) -> list[FlightEvent]:
-    """Successfully-parsed flights only, for the board's current/next logic."""
+    """Successfully-parsed flights only, for the board's current/next logic
+    -- and, via that, everywhere current/next scoping matters: history
+    browsing (/api/timeline) and AeroAPI's polling-target selection
+    (aeroapi_sync.sync_now()/poll_flight_now(), which both read through
+    this same function) all naturally never see one either.
+
+    Also excludes virtual FAKE positioning legs (parser.is_fake_leg()) --
+    they're real rows in the feed with a real station/time, but no flight
+    ever actually happens, so they should never win current/next, occupy a
+    board slot, or get polled against AeroAPI (which could never match
+    them anyway). They're still visible via get_all_event_rows() (the
+    /calendar debug view), just not eligible here."""
     rows = get_all_event_rows(db_path)
-    return [_row_to_flight_event(r) for r in rows if r["parse_ok"]]
+    return [
+        _row_to_flight_event(r) for r in rows
+        if r["parse_ok"] and not is_fake_leg(r["flight_number"])
+    ]
 
 
 def delete_manual_event(db_path: str, occurrence_key: str) -> bool:

@@ -210,10 +210,11 @@
       </thead>
       <tbody>
         {% for e in events %}
-        <tr class="{{ 'row-ok' if e.parse_ok else 'row-error' }}">
+        {% set is_fake = e.flight_number == 'FAKE' %}
+        <tr class="{{ 'row-ok' if e.parse_ok else 'row-error' }}{{ ' row-fake' if is_fake else '' }}">
           <td>{{ '✓' if e.parse_ok else '✗' }}</td>
           <td>{{ e.event_type }}</td>
-          <td>{{ e.flight_number or e.block_code or '' }}</td>
+          <td>{{ e.flight_number or e.block_code or '' }}{{ ' (virtual)' if is_fake else '' }}</td>
           <td>{{ e.dep_code }}</td>
           <td>{{ e.dep_dt_local or '' }}</td>
           <td>{{ e.dep_gate or 'No Gate' }}</td>
@@ -239,7 +240,7 @@
           <td>{{ e.aeroapi_status or '' }}</td>
           <td>{{ e.aeroapi_updated_at or '' }}</td>
           <td>
-            {% if status_source == 'AEROAPI' and e.event_type == 'FLIGHT' and e.parse_ok %}
+            {% if status_source == 'AEROAPI' and e.event_type == 'FLIGHT' and e.parse_ok and not is_fake %}
             <form method="post" action="{{ url_for('aeroapi_poll_record') }}" style="display:inline;">
               <input type="hidden" name="occurrence_key" value="{{ e.occurrence_key }}">
               <button type="submit" class="delete-btn poll-btn" title="Poll AeroAPI for this specific record right now, regardless of current/next scope or cadence">Poll</button>
